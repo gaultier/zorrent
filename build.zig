@@ -14,6 +14,7 @@ pub fn build(b: *Builder) void {
     const exe = b.addExecutable("zorrent", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
+    exe.addPackagePath("zig-bencode", "zig-bencode/src/main.zig");
     exe.install();
 
     const run_cmd = exe.run();

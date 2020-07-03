@@ -1,0 +1,3 @@
+[submodule "zig-bencode"]
+	path = zig-bencode
+	url = git@github.com:gaultier/zig-bencode.git
