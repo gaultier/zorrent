@@ -14,4 +14,13 @@ pub fn main() anyerror!void {
     }
 
     std.debug.warn("decoded: {}\n", .{value});
+
+    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
+    defer socket.close();
+
+    try socket.writeAll("GET /announce\n\n");
+    var response: [300]u8 = undefined;
+    const res = try socket.read(response[0..]);
+
+    std.debug.warn("res={} response=`{}`\n", .{ res, response });
 }
