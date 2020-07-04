@@ -94,6 +94,31 @@ fn dump(value: bencode.Value, indent: usize) anyerror!void {
     }
 }
 
+const InMemoryStream = struct {
+    const Self = @This();
+    pub const OutStream = std.io.OutStream(*Self, Error, write);
+    pub const Error = anyerror;
+
+    buffer: std.ArrayList(u8),
+
+    fn init(allocator: *std.mem.Allocator) Self {
+        return .{ .buffer = std.ArrayList(u8).init(allocator) };
+    }
+
+    pub fn outStream(self: *Self) OutStream {
+        return .{ .context = self };
+    }
+
+    fn write(self: *Self, bytes: []const u8) Error!usize {
+        try self.buffer.appendSlice(bytes);
+        return bytes.len;
+    }
+
+    fn data(self: *Self) []const u8 {
+        return self.buffer.items;
+    }
+};
+
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = &arena.allocator;
@@ -120,8 +145,9 @@ pub fn main() anyerror!void {
     };
 
     // var field_info_bencoded: [256]u8 = undefined;
-    var writer = std.io.getStdOut().writer();
-    try field_info.stringifyValue(writer);
+    var stream = InMemoryStream.init(allocator);
+    try field_info.stringifyValue(stream.outStream());
+    std.debug.warn("`{}`\n", .{stream.data()});
 
     //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
     //    defer socket.close();
