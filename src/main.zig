@@ -146,6 +146,15 @@ pub fn main() anyerror!void {
     for (peer_id) |byte| {
         try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
     }
+
+    const port: u16 = 6881;
+    try std.fmt.format(query.writer(), "&port={}", .{port});
+
+    const uploaded = 0;
+    try std.fmt.format(query.writer(), "&uploaded={}", .{uploaded});
+
+    const downloaded = 0;
+    try std.fmt.format(query.writer(), "&downloaded={}", .{downloaded});
     std.debug.warn("query=`{}`", .{query.items});
 
     //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
