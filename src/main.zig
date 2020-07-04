@@ -94,31 +94,6 @@ fn dump(value: bencode.Value, indent: usize) anyerror!void {
     }
 }
 
-const InMemoryStream = struct {
-    const Self = @This();
-    pub const OutStream = std.io.OutStream(*Self, Error, write);
-    pub const Error = anyerror;
-
-    buffer: std.ArrayList(u8),
-
-    fn init(allocator: *std.mem.Allocator) Self {
-        return .{ .buffer = std.ArrayList(u8).init(allocator) };
-    }
-
-    pub fn outStream(self: *Self) OutStream {
-        return .{ .context = self };
-    }
-
-    fn write(self: *Self, bytes: []const u8) Error!usize {
-        try self.buffer.appendSlice(bytes);
-        return bytes.len;
-    }
-
-    fn data(self: *Self) []u8 {
-        return self.buffer.items;
-    }
-};
-
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = &arena.allocator;
@@ -139,20 +114,32 @@ pub fn main() anyerror!void {
         value.deinit();
     }
 
+    const url: bencode.Value = value.root.Object.getValue("announce") orelse {
+        try std.io.getStdErr().writer().print("Error getting field `announce`: not found\n", .{});
+        return;
+    };
+
     const field_info: bencode.Value = value.root.Object.getValue("info") orelse {
         try std.io.getStdErr().writer().print("Error getting field `info`: not found\n", .{});
         return;
     };
 
-    // var field_info_bencoded: [256]u8 = undefined;
-    var stream = InMemoryStream.init(allocator);
-    try field_info.stringifyValue(stream.outStream());
-    std.debug.warn("`{}`\n", .{stream.data()});
+    var field_info_bencoded = std.ArrayList(u8).init(allocator);
+    try field_info.stringifyValue(field_info_bencoded.writer());
+    // std.debug.warn("`{}`\n", .{field_info_bencoded.items});
 
     var hash: [20]u8 = undefined;
-    var data = stream.data();
-    std.crypto.Sha1.hash(data, hash[0..]);
-    std.debug.warn("`hash={}`\n", .{hash});
+    std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
+
+    var query = std.ArrayList(u8).init(allocator);
+    try query.appendSlice(url.String);
+    try query.appendSlice("?info_hash=");
+
+    for (hash) |byte| {
+        try std.fmt.format(query.writer(), "%{X:<02}", .{byte});
+    }
+
+    std.debug.warn("query=`{}`", .{query.items});
 
     //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
     //    defer socket.close();
