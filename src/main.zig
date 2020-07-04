@@ -131,13 +131,12 @@ pub fn main() anyerror!void {
 
     var field_info_bencoded = std.ArrayList(u8).init(allocator);
     try field_info.stringifyValue(field_info_bencoded.writer());
-    // std.debug.warn("`{}`\n", .{field_info_bencoded.items});
+    std.debug.warn("`{}`\n", .{field_info_bencoded.items});
 
     var hash: [20]u8 = undefined;
     std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
 
     var query = std.ArrayList(u8).init(allocator);
-    try query.appendSlice(url.String);
     try query.appendSlice("?info_hash=");
 
     for (hash) |byte| {
@@ -164,13 +163,14 @@ pub fn main() anyerror!void {
     const left = length.Integer - downloaded; // FIXME
     try std.fmt.format(query.writer(), "&left={}", .{left});
 
+    try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
+
     std.debug.warn("query=`{}`", .{query.items});
-    //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
-    //    defer socket.close();
-    //
-    //    try socket.writeAll("GET /announce\n\n");
-    //    var response: [300]u8 = undefined;
-    //    const res = try socket.read(response[0..]);
-    //
-    //    std.debug.warn("res={} response=`{}`\n", .{ res, response });
+    var socket = try std.net.tcpConnectToHost(allocator, "bttracker.debian.org", 6969);
+    defer socket.close();
+    try std.fmt.format(socket.writer(), "GET /announce{}\n\n", .{query});
+    var response: [900]u8 = undefined;
+    const res = try socket.read(response[0..]);
+
+    std.debug.warn("res={} response=`{}`\n", .{ res, response });
 }
