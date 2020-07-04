@@ -136,9 +136,16 @@ pub fn main() anyerror!void {
     try query.appendSlice("?info_hash=");
 
     for (hash) |byte| {
-        try std.fmt.format(query.writer(), "%{X:<02}", .{byte});
+        try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
     }
 
+    var peer_id: [20]u8 = undefined;
+    try std.crypto.randomBytes(peer_id[0..]);
+
+    try query.appendSlice("&peer_id=");
+    for (peer_id) |byte| {
+        try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
+    }
     std.debug.warn("query=`{}`", .{query.items});
 
     //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
