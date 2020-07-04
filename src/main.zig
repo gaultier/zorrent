@@ -114,7 +114,7 @@ const InMemoryStream = struct {
         return bytes.len;
     }
 
-    fn data(self: *Self) []const u8 {
+    fn data(self: *Self) []u8 {
         return self.buffer.items;
     }
 };
@@ -148,6 +148,11 @@ pub fn main() anyerror!void {
     var stream = InMemoryStream.init(allocator);
     try field_info.stringifyValue(stream.outStream());
     std.debug.warn("`{}`\n", .{stream.data()});
+
+    var hash: [20]u8 = undefined;
+    var data = stream.data();
+    std.crypto.Sha1.hash(data, hash[0..]);
+    std.debug.warn("`hash={}`\n", .{hash});
 
     //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
     //    defer socket.close();
