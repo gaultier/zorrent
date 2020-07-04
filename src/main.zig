@@ -114,13 +114,18 @@ pub fn main() anyerror!void {
         value.deinit();
     }
 
-    const url: bencode.Value = value.root.Object.getValue("announce") orelse {
+    const url = value.root.Object.getValue("announce") orelse {
         try std.io.getStdErr().writer().print("Error getting field `announce`: not found\n", .{});
         return;
     };
 
-    const field_info: bencode.Value = value.root.Object.getValue("info") orelse {
+    const field_info = value.root.Object.getValue("info") orelse {
         try std.io.getStdErr().writer().print("Error getting field `info`: not found\n", .{});
+        return;
+    };
+
+    const length = field_info.Object.getValue("length") orelse {
+        try std.io.getStdErr().writer().print("Error getting field `info.length`: not found\n", .{});
         return;
     };
 
@@ -155,8 +160,11 @@ pub fn main() anyerror!void {
 
     const downloaded = 0;
     try std.fmt.format(query.writer(), "&downloaded={}", .{downloaded});
-    std.debug.warn("query=`{}`", .{query.items});
 
+    const left = length.Integer - downloaded; // FIXME
+    try std.fmt.format(query.writer(), "&left={}", .{left});
+
+    std.debug.warn("query=`{}`", .{query.items});
     //    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
     //    defer socket.close();
     //
