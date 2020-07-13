@@ -129,7 +129,6 @@ pub fn main() anyerror!void {
 
     var field_info_bencoded = std.ArrayList(u8).init(allocator);
     try field_info.stringifyValue(field_info_bencoded.writer());
-    std.debug.warn("`{}`\n", .{field_info_bencoded.items});
 
     var hash: [20]u8 = undefined;
     std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
@@ -166,7 +165,7 @@ pub fn main() anyerror!void {
     std.debug.warn("query=`{}`", .{query.items});
     var socket = try std.net.tcpConnectToHost(allocator, "bttracker.debian.org", 6969);
     defer socket.close();
-    try std.fmt.format(socket.writer(), "GET /announce{}\n\n", .{query});
+    try std.fmt.format(socket.writer(), "GET /announce{} HTTP/1.1\n\n", .{query});
     var response: [900]u8 = undefined;
     const res = try socket.read(response[0..]);
 
