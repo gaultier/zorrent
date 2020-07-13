@@ -162,14 +162,18 @@ pub fn main() anyerror!void {
 
     try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
 
-    std.debug.warn("query=`{}`", .{query.items});
+    std.debug.warn("GET /announce{} HTTP/1.1\r\nHost: bttracker.debian.org:6969\r\nAccept: */*\r\n\r\n", .{query.items});
     var socket = try std.net.tcpConnectToHost(allocator, "bttracker.debian.org", 6969);
     defer socket.close();
-    try std.fmt.format(socket.writer(), "GET /announce{} HTTP/1.1\n\n", .{query});
-    var response: [900]u8 = undefined;
+    try std.fmt.format(socket.writer(), "GET /announce{} HTTP/1.1\r\nHost: bttracker.debian.org:6969\r\nUser-Agent: zorrent\r\nAccept: */*\r\n\r\n", .{query.items});
+    var response: [2500]u8 = undefined;
     const res = try socket.read(response[0..]);
 
     std.debug.warn("res={} response=`{}`\n", .{ res, response });
 
+    if (std.mem.eql(u8, response[0..], "HTTP/1.1 200 OK")) return;
+
     var value_decoded = try bencode.ValueTree.parse(response[0..], allocator);
+
+    std.debug.warn("value_decoded={}", .{value_decoded});
 }
