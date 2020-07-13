@@ -95,7 +95,7 @@ fn dump(value: bencode.Value, indent: usize) anyerror!void {
 }
 
 pub fn main() anyerror!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     const allocator = &arena.allocator;
 
     var args = try std.process.argsAlloc(allocator);
@@ -170,4 +170,6 @@ pub fn main() anyerror!void {
     const res = try socket.read(response[0..]);
 
     std.debug.warn("res={} response=`{}`\n", .{ res, response });
+
+    var value_decoded = try bencode.ValueTree.parse(response[0..], allocator);
 }
