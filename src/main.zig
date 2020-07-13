@@ -110,21 +110,19 @@ pub fn main() anyerror!void {
         try std.io.getStdErr().writer().print("Error parsing: {}\n", .{err});
         return;
     };
-    defer {
-        value.deinit();
-    }
+    defer value.deinit();
 
-    const url = value.root.Object.getValue("announce") orelse {
+    const url = bencode.mapLookup(&value.root.Object, "announce") orelse {
         try std.io.getStdErr().writer().print("Error getting field `announce`: not found\n", .{});
         return;
     };
 
-    const field_info = value.root.Object.getValue("info") orelse {
+    const field_info = bencode.mapLookup(&value.root.Object, "info") orelse {
         try std.io.getStdErr().writer().print("Error getting field `info`: not found\n", .{});
         return;
     };
 
-    const length = field_info.Object.getValue("length") orelse {
+    const length = bencode.mapLookup(&field_info.Object, "length") orelse {
         try std.io.getStdErr().writer().print("Error getting field `info.length`: not found\n", .{});
         return;
     };
