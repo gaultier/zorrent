@@ -210,6 +210,7 @@ pub fn main() anyerror!void {
     try dump(&value_decoded.root, 0);
 
     var dict = value_decoded.root.Object;
+    // TODO: support non compact format i.e. a list of strings
     const peers = bencode.mapLookup(&dict, "peers").?.String;
 
     std.debug.assert(peers.len % 6 == 0);
