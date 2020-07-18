@@ -208,4 +208,27 @@ pub fn main() anyerror!void {
 
     var value_decoded = try bencode.ValueTree.parse(res_body.items[0..], allocator);
     try dump(&value_decoded.root, 0);
+
+    var dict = value_decoded.root.Object;
+    const peers = bencode.mapLookup(&dict, "peers").?.String;
+
+    std.debug.assert(peers.len % 6 == 0);
+
+    var i: usize = 0;
+    while (i < peers.len) {
+        const peer_port_s = [2]u8{ peers[i + 4], peers[i + 5] };
+        const peer_port = std.mem.readIntBig(u16, &peer_port_s);
+
+        const ip = [4]u8{
+            peers[i],
+            peers[i + 1],
+            peers[i + 2],
+            peers[i + 3],
+        };
+        const address = std.net.Address.initIp4(ip, peer_port);
+
+        std.debug.warn("address: {}\n", .{address});
+
+        i += 6;
+    }
 }
