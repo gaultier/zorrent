@@ -1,4 +1,5 @@
 const std = @import("std");
+const c = @cImport(@cInclude("curl/curl.h"));
 const bencode = @import("zig-bencode");
 
 fn outputUnicodeEscape(
@@ -94,6 +95,10 @@ fn dump(value: bencode.Value, indent: usize) anyerror!void {
     }
 }
 
+fn readCallback(ptr: *c_void, size: usize, nmemb: usize, stream: *c_void) usize {
+    return 0;
+}
+
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     const allocator = &arena.allocator;
@@ -163,27 +168,37 @@ pub fn main() anyerror!void {
     try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
 
     std.debug.warn("GET /announce{} HTTP/1.1\r\nHost: OpenBSD.somedomain.net:6969\r\nAccept: */*\r\n\r\n", .{query.items});
-    var socket = try std.net.tcpConnectToHost(allocator, "OpenBSD.somedomain.net", 6969);
-    defer socket.close();
-    try std.fmt.format(socket.writer(), "GET /announce{} HTTP/1.1\r\nHost: OpenBSD.somedomain.net:6969\r\nUser-Agent: zorrent\r\nAccept: */*\r\n\r\n", .{query.items});
-    var response: [2500]u8 = undefined;
-    const res = try socket.read(response[0..]);
 
-    std.debug.warn("res={} response=`{}`\n", .{ res, response });
+    _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
 
-    if (std.mem.eql(u8, response[0..], "HTTP/1.1 200 OK")) return;
+    var curl: ?*c.CURL = null;
+    var curl_res: c.CURLcode = undefined;
+    var headers: [*c]c.curl_slist = null;
 
-    const body = [_]u8{
-        0x64, 0x38, 0x3a, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x69, 0x34, 0x65, 0x31, 0x30,
-        0x3a, 0x64, 0x6f, 0x77, 0x6e, 0x6c, 0x6f, 0x61, 0x64, 0x65, 0x64, 0x69, 0x31, 0x65, 0x31, 0x30,
-        0x3a, 0x69, 0x6e, 0x63, 0x6f, 0x6d, 0x70, 0x6c, 0x65, 0x74, 0x65, 0x69, 0x31, 0x65, 0x38, 0x3a,
-        0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x69, 0x31, 0x37, 0x31, 0x34, 0x65, 0x31, 0x32,
-        0x3a, 0x6d, 0x69, 0x6e, 0x20, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x76, 0x61, 0x6c, 0x69, 0x38, 0x35,
-        0x37, 0x65, 0x35, 0x3a, 0x70, 0x65, 0x65, 0x72, 0x73, 0x33, 0x30, 0x3a, 0x5b, 0x28, 0x2f, 0xeb,
-        0x1a, 0xe1, 0x8d, 0xef, 0x96, 0xf8, 0x1a, 0xe1, 0x8d, 0xef, 0x66, 0xc4, 0x1a, 0xe1, 0x45, 0xc5,
-        0xb3, 0xa2, 0xd8, 0x4f, 0x44, 0x32, 0x4d, 0x4c, 0xcd, 0x14, 0x65,
+    curl = c.curl_easy_init() orelse {
+        _ = c.printf("curl_easy_init() failed: %s\n", c.curl_easy_strerror(curl_res));
+        return;
     };
-    var value_decoded = try bencode.ValueTree.parse(body[0..], allocator);
+    defer c.curl_easy_cleanup(curl);
+    defer c.curl_global_cleanup();
 
-    std.debug.warn("value_decoded={}", .{value_decoded.root.Object});
+    // url
+    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, url));
+
+    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_READFUNCTION, readCallback);
+
+    // perform the call
+    curl_res = c.curl_easy_perform(curl);
+    if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        _ = c.printf("curl_easy_perform() failed: %s\n", c.curl_easy_strerror(curl_res));
+        return;
+    }
+
+    // var response: [2500]u8 = undefined;
+    // const res = try socket.read(response[0..]);
+
+    // std.debug.warn("res={} response=`{}`\n", .{ res, response });
+
+    // var value_decoded = try bencode.ValueTree.parse(body[0..], allocator);
+    // std.debug.warn("value_decoded={}", .{value_decoded.root.Object});
 }
