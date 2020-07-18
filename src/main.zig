@@ -139,7 +139,7 @@ pub fn main() anyerror!void {
     std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
 
     var query = std.ArrayList(u8).init(allocator);
-    try query.appendSlice("?info_hash=");
+    try query.appendSlice("OpenBSD.somedomain.net:6969?info_hash=");
 
     for (hash) |byte| {
         try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
@@ -183,7 +183,7 @@ pub fn main() anyerror!void {
     defer c.curl_global_cleanup();
 
     // url
-    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, url));
+    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, query.items[0..]));
 
     _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_READFUNCTION, readCallback);
 
