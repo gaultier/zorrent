@@ -25,10 +25,10 @@ fn outputUnicodeEscape(
     }
 }
 
-fn dump(value: bencode.Value, indent: usize) anyerror!void {
+fn dump(value: *bencode.Value, indent: usize) anyerror!void {
     var out_stream = std.io.getStdOut().writer();
 
-    switch (value) {
+    switch (value.*) {
         .Integer => |n| {
             try out_stream.print("{}", .{n});
         },
@@ -40,7 +40,7 @@ fn dump(value: bencode.Value, indent: usize) anyerror!void {
                 while (i < s.len) : (i += 1) {
                     switch (s[i]) {
                         // normal ascii character
-                        0x20...0x21, 0x23...0x2E, 0x30...0x5B, 0x5D...0x7F => |c| try out_stream.writeByte(c),
+                        0x20...0x21, 0x23...0x2E, 0x30...0x5B, 0x5D...0x7F => |ch| try out_stream.writeByte(ch),
                         // only 2 characters that *must* be escaped
                         '\\' => try out_stream.writeAll("\\\\"),
                         '\"' => try out_stream.writeAll("\\\""),
@@ -69,27 +69,30 @@ fn dump(value: bencode.Value, indent: usize) anyerror!void {
                     }
                 }
             } else {
-                for (s) |c| {
-                    try out_stream.print("\\x{X}", .{c});
+                for (s) |ch| {
+                    try out_stream.print("\\x{X}", .{ch});
                 }
             }
             try out_stream.print("\"", .{});
         },
         .Array => |arr| {
-            for (arr.items) |v| {
+            for (arr.items) |*v| {
                 try out_stream.print("\n", .{});
                 try out_stream.writeByteNTimes(' ', indent);
                 try out_stream.print("- ", .{});
                 try dump(v, indent + 2);
             }
         },
-        .Object => |obj| {
-            var it = obj.iterator();
-            while (it.next()) |kv| {
+        .Object => |*obj| {
+            var node = obj.first();
+            while (node) |it| {
+                const entry = bencode.mapGetEntry(it);
                 try out_stream.print("\n", .{});
                 try out_stream.writeByteNTimes(' ', indent);
-                try out_stream.print("\"{}\": ", .{kv.key});
-                try dump(kv.value, indent + 2);
+                try out_stream.print("\"{}\": ", .{entry.key});
+                try dump(&entry.value, indent + 2);
+
+                node = it.next();
             }
         },
     }
@@ -202,11 +205,7 @@ pub fn main() anyerror!void {
     }
 
     std.debug.warn("Res body: {}", .{res_body.items});
-    // var response: [2500]u8 = undefined;
-    // const res = try socket.read(response[0..]);
 
-    // std.debug.warn("res={} response=`{}`\n", .{ res, response });
-
-    // var value_decoded = try bencode.ValueTree.parse(body[0..], allocator);
-    // std.debug.warn("value_decoded={}", .{value_decoded.root.Object});
+    var value_decoded = try bencode.ValueTree.parse(res_body.items[0..], allocator);
+    try dump(&value_decoded.root, 0);
 }
