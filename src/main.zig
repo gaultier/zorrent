@@ -216,6 +216,8 @@ pub fn main() anyerror!void {
     std.debug.assert(peers.len % 6 == 0);
 
     var i: usize = 0;
+    var peer_addresses = std.ArrayList(std.net.Address).init(allocator);
+
     while (i < peers.len) {
         const peer_port_s = [2]u8{ peers[i + 4], peers[i + 5] };
         const peer_port = std.mem.readIntBig(u16, &peer_port_s);
@@ -229,7 +231,17 @@ pub fn main() anyerror!void {
         const address = std.net.Address.initIp4(ip, peer_port);
 
         std.debug.warn("address: {}\n", .{address});
+        try peer_addresses.append(address);
 
         i += 6;
     }
+
+    std.debug.assert(peer_addresses.items.len > 0);
+    var socket = try std.net.tcpConnectToAddress(peer_addresses.items[0]);
+    defer socket.close();
+
+    var response: [300]u8 = undefined;
+    const res = try socket.read(response[0..]);
+
+    std.debug.warn("res={} response=`{}`\n", .{ res, response });
 }
