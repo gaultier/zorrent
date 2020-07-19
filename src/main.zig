@@ -219,15 +219,16 @@ pub fn main() anyerror!void {
     var peer_addresses = std.ArrayList(std.net.Address).init(allocator);
 
     while (i < peers.len) {
-        const peer_port_s = [2]u8{ peers[i + 4], peers[i + 5] };
-        const peer_port = std.mem.readIntBig(u16, &peer_port_s);
-
         const ip = [4]u8{
             peers[i],
             peers[i + 1],
             peers[i + 2],
             peers[i + 3],
         };
+
+        const peer_port_s = [2]u8{ peers[i + 4], peers[i + 5] };
+        const peer_port = std.mem.readIntBig(u16, &peer_port_s);
+
         const address = std.net.Address.initIp4(ip, peer_port);
 
         std.debug.warn("address: {}\n", .{address});
