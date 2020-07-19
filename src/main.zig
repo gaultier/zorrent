@@ -237,8 +237,16 @@ pub fn main() anyerror!void {
     }
 
     std.debug.assert(peer_addresses.items.len > 0);
-    var socket = try std.net.tcpConnectToAddress(peer_addresses.items[0]);
+    var socket = try std.net.tcpConnectToAddress(peer_addresses.items[1]);
     defer socket.close();
+
+    const handshake = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
+    try socket.writeAll(handshake);
+    try socket.writeAll(hash[0..]);
+    const remote_peer_id = "\x00" ** 20;
+    try socket.writeAll(remote_peer_id[0..]);
+
+    try socket.writeAll(&[_]u8{0x2}); // interested
 
     var response: [300]u8 = undefined;
     const res = try socket.read(response[0..]);
