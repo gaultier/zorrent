@@ -171,7 +171,16 @@ pub fn main() anyerror!void {
     const remote_peer_id = "\x00" ** 20;
     try socket.writeAll(remote_peer_id[0..]);
 
-    try socket.writeAll(&[_]u8{0x2}); // interested
+    try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
+    res = try socket.read(response[0..]);
+
+    try socket.writeAll(&[_]u8{
+        0,    0, 0, 0xd,
+        0x6,  0, 0, 0,
+        0,    0, 0, 0,
+        0,    0, 0, 0,
+        0x40,
+    }); // request first piece
     res = try socket.read(response[0..]);
 
     std.debug.warn("res={} response=", .{res});
