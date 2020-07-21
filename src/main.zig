@@ -10,6 +10,13 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
     return size * nmemb;
 }
 
+fn hexDump(bytes: []const u8) void {
+    for (bytes) |b| {
+        std.debug.warn("{X:0<2} ", .{b});
+    }
+    std.debug.warn("\n", .{});
+}
+
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     const allocator = &arena.allocator;
@@ -148,19 +155,25 @@ pub fn main() anyerror!void {
     const handshake = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
     try socket.writeAll(handshake);
     try socket.writeAll(hash[0..]);
-    // const remote_peer_id = "\x00" ** 20;
-    // try socket.writeAll(remote_peer_id[0..]);
-
-    // try socket.writeAll(&[_]u8{0x2}); // interested
 
     var response: [300]u8 = undefined;
-    const res = try socket.read(response[0..]);
+    var res = try socket.read(response[0..]);
 
-    std.debug.warn("res={} response=`{}`\n", .{ res, response });
+    std.debug.warn("res={} response=", .{res});
+    hexDump(response[0..res]);
 
     if (res >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", response[0..20])) {
         std.debug.warn("Got handshake ok\n", .{});
     } else {
         std.debug.warn("Got no handshake\n", .{});
     }
+
+    const remote_peer_id = "\x00" ** 20;
+    try socket.writeAll(remote_peer_id[0..]);
+
+    try socket.writeAll(&[_]u8{0x2}); // interested
+    res = try socket.read(response[0..]);
+
+    std.debug.warn("res={} response=", .{res});
+    hexDump(response[0..res]);
 }
