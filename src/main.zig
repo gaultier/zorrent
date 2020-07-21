@@ -156,7 +156,7 @@ pub fn main() anyerror!void {
     try socket.writeAll(handshake);
     try socket.writeAll(hash[0..]);
 
-    var response: [300]u8 = undefined;
+    var response: [1 << 14]u8 = undefined;
     var res = try socket.read(response[0..]);
 
     std.debug.warn("res={} response=", .{res});
@@ -171,6 +171,7 @@ pub fn main() anyerror!void {
     const remote_peer_id = "\x00" ** 20;
     try socket.writeAll(remote_peer_id[0..]);
 
+    try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 1 }); // unchoke
     try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
     res = try socket.read(response[0..]);
 
@@ -181,8 +182,22 @@ pub fn main() anyerror!void {
         0,    0, 0, 0,
         0x40,
     }); // request first piece
-    res = try socket.read(response[0..]);
 
+    // Unchoke
+    res = try socket.read(response[0..]);
+    std.debug.warn("res={} response=", .{res});
+    hexDump(response[0..res]);
+
+    // Piece 0
+    res = try socket.read(response[0..]);
+    std.debug.warn("res={} response=", .{res});
+    hexDump(response[0..res]);
+
+    res = try socket.read(response[0..]);
+    std.debug.warn("res={} response=", .{res});
+    hexDump(response[0..res]);
+
+    res = try socket.read(response[0..]);
     std.debug.warn("res={} response=", .{res});
     hexDump(response[0..res]);
 }
