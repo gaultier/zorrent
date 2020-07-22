@@ -59,6 +59,8 @@ pub const TorrentFile = struct {
 
     fn buildAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) ![]const u8 {
         var query = std.ArrayList(u8).init(allocator);
+        defer query.deinit();
+
         try query.appendSlice("OpenBSD.somedomain.net:6969/announce?info_hash=");
 
         for (self.hash_info) |byte| {
@@ -85,6 +87,8 @@ pub const TorrentFile = struct {
 
         try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
 
+        try query.append(0);
+
         return query.toOwnedSlice();
     }
 
@@ -108,7 +112,7 @@ pub const TorrentFile = struct {
         defer c.curl_easy_cleanup(curl);
 
         // url
-        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl[0..]));
+        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
 
         _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
 
