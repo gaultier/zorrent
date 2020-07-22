@@ -14,6 +14,7 @@ pub fn main() anyerror!void {
     defer allocator.destroy(&peers);
 
     for (peers) |*peer| {
+        std.debug.warn("Connecting to peer {}", .{peer.address});
         try peer.connect();
         std.debug.warn("Connected to peer {}", .{peer.address});
     }
