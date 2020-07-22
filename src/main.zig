@@ -65,8 +65,8 @@ pub const TorrentFile = struct {
             try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
         }
 
-        var peer_id: [20]u8 = undefined;
-        try std.crypto.randomBytes(peer_id[0..]);
+        var peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+        // try std.crypto.randomBytes(peer_id[0..]);
 
         try query.appendSlice("&peer_id=");
         for (peer_id) |byte| {
@@ -95,6 +95,7 @@ pub const TorrentFile = struct {
         std.debug.warn("queryUrl=`{}`\n", .{queryUrl});
 
         _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
+        defer c.curl_global_cleanup();
 
         var curl: ?*c.CURL = null;
         var curl_res: c.CURLcode = undefined;
@@ -105,7 +106,6 @@ pub const TorrentFile = struct {
             return error.CurlInitFailed;
         };
         defer c.curl_easy_cleanup(curl);
-        defer c.curl_global_cleanup();
 
         // url
         _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl[0..]));
