@@ -8,6 +8,5 @@ pub fn main() anyerror!void {
     var args = try std.process.argsAlloc(allocator);
     const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
 
-    var value_tree = try zorrent.parseFile(arg, allocator);
-    defer value_tree.deinit();
+    var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
 }

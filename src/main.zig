@@ -17,37 +17,48 @@ pub fn hexDump(bytes: []const u8) void {
     std.debug.warn("\n", .{});
 }
 
-pub fn parseFile(path: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
-    var file = try std.fs.cwd().openFile(path, std.fs.File.OpenFlags{ .read = true });
-    defer file.close();
+pub const TorrentFile = struct {
+    announce: []const u8,
+    lengthBytesCount: usize,
+    hash_info: [20]u8,
+    downloadedBytesCount: usize,
+    uploadedBytesCount: usize,
+    leftBytesCount: usize,
 
-    const content = try file.readAllAlloc(allocator, (try file.stat()).size, std.math.maxInt(usize));
+    pub fn parse(path: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
+        var file = try std.fs.cwd().openFile(path, std.fs.File.OpenFlags{ .read = true });
+        defer file.close();
 
-    return bencode.ValueTree.parse(content, allocator);
-}
+        const content = try file.readAllAlloc(allocator, (try file.stat()).size, std.math.maxInt(usize));
+
+        var value = try bencode.ValueTree.parse(content, allocator);
+        defer value.deinit();
+
+        const announce = (bencode.mapLookup(&value.root.Object, "announce") orelse return error.FieldNotFound).String;
+
+        const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
+
+        const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
+
+        var field_info_bencoded = std.ArrayList(u8).init(allocator);
+        defer field_info_bencoded.deinit();
+        try field_info.stringifyValue(field_info_bencoded.writer());
+
+        var hash: [20]u8 = undefined;
+        std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
+
+        return TorrentFile{
+            .announce = announce,
+            .lengthBytesCount = @intCast(usize, length),
+            .hash_info = hash,
+            .uploadedBytesCount = 0,
+            .downloadedBytesCount = 0,
+            .leftBytesCount = @intCast(usize, length),
+        };
+    }
+};
 
 fn main() anyerror!void {
-    const url = bencode.mapLookup(&value.root.Object, "announce") orelse {
-        try std.io.getStdErr().writer().print("Error getting field `announce`: not found\n", .{});
-        return;
-    };
-
-    const field_info = bencode.mapLookup(&value.root.Object, "info") orelse {
-        try std.io.getStdErr().writer().print("Error getting field `info`: not found\n", .{});
-        return;
-    };
-
-    const length = bencode.mapLookup(&field_info.Object, "length") orelse {
-        try std.io.getStdErr().writer().print("Error getting field `info.length`: not found\n", .{});
-        return;
-    };
-
-    var field_info_bencoded = std.ArrayList(u8).init(allocator);
-    try field_info.stringifyValue(field_info_bencoded.writer());
-
-    var hash: [20]u8 = undefined;
-    std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
-
     var query = std.ArrayList(u8).init(allocator);
     try query.appendSlice("OpenBSD.somedomain.net:6969/announce?info_hash=");
 
