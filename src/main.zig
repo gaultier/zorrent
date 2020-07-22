@@ -56,38 +56,38 @@ pub const TorrentFile = struct {
             .leftBytesCount = @intCast(usize, length),
         };
     }
+
+    fn buildAnnounceUrl(self: Self) ![]const u8 {
+        var query = std.ArrayList(u8).init(allocator);
+        try query.appendSlice("OpenBSD.somedomain.net:6969/announce?info_hash=");
+
+        for (hash) |byte| {
+            try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
+        }
+
+        var peer_id: [20]u8 = undefined;
+        try std.crypto.randomBytes(peer_id[0..]);
+
+        try query.appendSlice("&peer_id=");
+        for (peer_id) |byte| {
+            try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
+        }
+
+        const port: u16 = 6881;
+        try std.fmt.format(query.writer(), "&port={}", .{port});
+
+        try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploaded});
+
+        const downloaded = 0;
+        try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloaded});
+
+        try std.fmt.format(query.writer(), "&left={}", .{self.left});
+
+        try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
+    }
 };
 
 fn main() anyerror!void {
-    var query = std.ArrayList(u8).init(allocator);
-    try query.appendSlice("OpenBSD.somedomain.net:6969/announce?info_hash=");
-
-    for (hash) |byte| {
-        try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
-    }
-
-    var peer_id: [20]u8 = undefined;
-    try std.crypto.randomBytes(peer_id[0..]);
-
-    try query.appendSlice("&peer_id=");
-    for (peer_id) |byte| {
-        try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
-    }
-
-    const port: u16 = 6881;
-    try std.fmt.format(query.writer(), "&port={}", .{port});
-
-    const uploaded = 0;
-    try std.fmt.format(query.writer(), "&uploaded={}", .{uploaded});
-
-    const downloaded = 0;
-    try std.fmt.format(query.writer(), "&downloaded={}", .{downloaded});
-
-    const left = length.Integer - downloaded; // FIXME
-    try std.fmt.format(query.writer(), "&left={}", .{left});
-
-    try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
-
     std.debug.warn("{}", .{query.items});
 
     _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
