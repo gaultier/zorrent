@@ -24,6 +24,8 @@ pub fn build(b: *Builder) void {
         }},
     });
     exe.setOutputDir("zig-cache");
+    exe.linkLibC();
+    exe.linkSystemLibrary("curl");
     exe.install();
 
     const run_cmd = exe.run();

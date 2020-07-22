@@ -9,4 +9,5 @@ pub fn main() anyerror!void {
     const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
 
     var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
+    const announceResponse = torrent_file.queryAnnounceUrl(allocator);
 }

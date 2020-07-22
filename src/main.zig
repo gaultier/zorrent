@@ -57,11 +57,11 @@ pub const TorrentFile = struct {
         };
     }
 
-    fn buildAnnounceUrl(self: Self) ![]const u8 {
+    fn buildAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) ![]const u8 {
         var query = std.ArrayList(u8).init(allocator);
         try query.appendSlice("OpenBSD.somedomain.net:6969/announce?info_hash=");
 
-        for (hash) |byte| {
+        for (self.hash_info) |byte| {
             try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
         }
 
@@ -76,53 +76,61 @@ pub const TorrentFile = struct {
         const port: u16 = 6881;
         try std.fmt.format(query.writer(), "&port={}", .{port});
 
-        try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploaded});
+        try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploadedBytesCount});
 
         const downloaded = 0;
-        try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloaded});
+        try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloadedBytesCount});
 
-        try std.fmt.format(query.writer(), "&left={}", .{self.left});
+        try std.fmt.format(query.writer(), "&left={}", .{self.leftBytesCount});
 
         try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
+
+        return query.toOwnedSlice();
+    }
+
+    pub fn queryAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) !bencode.ValueTree {
+        var queryUrl = try self.buildAnnounceUrl(allocator);
+        defer allocator.destroy(&queryUrl);
+
+        std.debug.warn("queryUrl=`{}`\n", .{queryUrl});
+
+        _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
+
+        var curl: ?*c.CURL = null;
+        var curl_res: c.CURLcode = undefined;
+        var headers: [*c]c.curl_slist = null;
+
+        curl = c.curl_easy_init() orelse {
+            _ = c.printf("curl_easy_init() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlInitFailed;
+        };
+        defer c.curl_easy_cleanup(curl);
+        defer c.curl_global_cleanup();
+
+        // url
+        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl[0..]));
+
+        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
+
+        var res_body = std.ArrayList(u8).init(allocator);
+        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
+
+        // perform the call
+        curl_res = c.curl_easy_perform(curl);
+        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+            _ = c.printf("curl_easy_perform() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlPerform;
+        }
+
+        std.debug.warn("Res body: {}", .{res_body.items});
+
+        var value_decoded = try bencode.ValueTree.parse(res_body.items[0..], allocator);
+        try bencode.dump(&value_decoded.root, 0);
+        return value_decoded;
     }
 };
 
 fn main() anyerror!void {
-    std.debug.warn("{}", .{query.items});
-
-    _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
-
-    var curl: ?*c.CURL = null;
-    var curl_res: c.CURLcode = undefined;
-    var headers: [*c]c.curl_slist = null;
-
-    curl = c.curl_easy_init() orelse {
-        _ = c.printf("curl_easy_init() failed: %s\n", c.curl_easy_strerror(curl_res));
-        return;
-    };
-    defer c.curl_easy_cleanup(curl);
-    defer c.curl_global_cleanup();
-
-    // url
-    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, query.items[0..]));
-
-    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
-
-    var res_body = std.ArrayList(u8).init(allocator);
-    _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
-
-    // perform the call
-    curl_res = c.curl_easy_perform(curl);
-    if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-        _ = c.printf("curl_easy_perform() failed: %s\n", c.curl_easy_strerror(curl_res));
-        return;
-    }
-
-    std.debug.warn("Res body: {}", .{res_body.items});
-
-    var value_decoded = try bencode.ValueTree.parse(res_body.items[0..], allocator);
-    try bencode.dump(&value_decoded.root, 0);
-
     var dict = value_decoded.root.Object;
     // TODO: support non compact format i.e. a list of strings
     const peers = bencode.mapLookup(&dict, "peers").?.String;
