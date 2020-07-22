@@ -98,11 +98,15 @@ pub const TorrentFile = struct {
 
         std.debug.warn("queryUrl=`{}`\n", .{queryUrl});
 
-        _ = c.curl_global_init(c.CURL_GLOBAL_ALL);
+        var curl_res: c.CURLcode = undefined;
+        curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
+        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+            _ = c.printf("curl_global_init() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlInitFailed;
+        }
         defer c.curl_global_cleanup();
 
         var curl: ?*c.CURL = null;
-        var curl_res: c.CURLcode = undefined;
         var headers: [*c]c.curl_slist = null;
 
         curl = c.curl_easy_init() orelse {
@@ -112,12 +116,24 @@ pub const TorrentFile = struct {
         defer c.curl_easy_cleanup(curl);
 
         // url
-        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
+        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
+        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlSetOptFailed;
+        }
 
-        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
+        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
+        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlSetOptFailed;
+        }
 
         var res_body = std.ArrayList(u8).init(allocator);
-        _ = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
+        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
+        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlSetOptFailed;
+        }
 
         // perform the call
         curl_res = c.curl_easy_perform(curl);
