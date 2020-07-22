@@ -19,6 +19,7 @@ pub fn hexDump(bytes: []const u8) void {
 
 pub const PeerState = enum {
     Unknown,
+    Connected,
     Handshaked,
     Down,
 };
@@ -26,6 +27,12 @@ pub const PeerState = enum {
 pub const Peer = struct {
     address: std.net.Address,
     state: PeerState,
+
+    pub fn connect(self: *Peer) !void {
+        var socket = try std.net.tcpConnectToAddress(self.address);
+        defer socket.close();
+        self.state = PeerState.Connected;
+    }
 };
 
 pub const TorrentFile = struct {
@@ -160,7 +167,7 @@ pub const TorrentFile = struct {
         return tracker_response;
     }
 
-    pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]const Peer {
+    pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
         const tracker_response = try self.queryAnnounceUrl(allocator);
         var dict = tracker_response.root.Object;
         // TODO: support non compact format i.e. a list of strings

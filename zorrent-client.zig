@@ -9,6 +9,11 @@ pub fn main() anyerror!void {
     const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
 
     var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
-    const peers = try torrent_file.getPeers(allocator);
+    var peers = try torrent_file.getPeers(allocator);
     defer allocator.destroy(&peers);
+
+    for (peers) |*peer| {
+        try peer.connect();
+        std.debug.warn("Connected to peer {}", .{peer.address});
+    }
 }
