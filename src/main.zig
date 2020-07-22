@@ -202,9 +202,6 @@ pub const TorrentFile = struct {
 };
 
 fn main() anyerror!void {
-    var socket = try std.net.tcpConnectToAddress(peers.items[1]);
-    defer socket.close();
-
     const handshake = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
     try socket.writeAll(handshake);
     try socket.writeAll(hash[0..]);
