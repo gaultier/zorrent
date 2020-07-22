@@ -17,6 +17,17 @@ pub fn hexDump(bytes: []const u8) void {
     std.debug.warn("\n", .{});
 }
 
+pub const PeerState = enum {
+    Unknown,
+    Handshaked,
+    Down,
+};
+
+pub const Peer = struct {
+    address: std.net.Address,
+    state: PeerState,
+};
+
 pub const TorrentFile = struct {
     announce: []const u8,
     lengthBytesCount: usize,
@@ -92,7 +103,7 @@ pub const TorrentFile = struct {
         return query.toOwnedSlice();
     }
 
-    pub fn queryAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) !bencode.ValueTree {
+    fn queryAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) !bencode.ValueTree {
         var queryUrl = try self.buildAnnounceUrl(allocator);
         defer allocator.destroy(&queryUrl);
 
@@ -144,43 +155,50 @@ pub const TorrentFile = struct {
 
         std.debug.warn("Res body: {}", .{res_body.items});
 
-        var value_decoded = try bencode.ValueTree.parse(res_body.items[0..], allocator);
-        try bencode.dump(&value_decoded.root, 0);
-        return value_decoded;
+        var tracker_response = try bencode.ValueTree.parse(res_body.items[0..], allocator);
+        try bencode.dump(&tracker_response.root, 0);
+        return tracker_response;
+    }
+
+    pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]const Peer {
+        const tracker_response = try self.queryAnnounceUrl(allocator);
+        var dict = tracker_response.root.Object;
+        // TODO: support non compact format i.e. a list of strings
+        const peers_compact = bencode.mapLookup(&dict, "peers").?.String;
+
+        std.debug.assert(peers_compact.len % 6 == 0);
+
+        var i: usize = 0;
+        var peers = std.ArrayList(Peer).init(allocator);
+        defer peers.deinit();
+
+        while (i < peers_compact.len) {
+            const ip = [4]u8{
+                peers_compact[i],
+                peers_compact[i + 1],
+                peers_compact[i + 2],
+                peers_compact[i + 3],
+            };
+
+            const peer_port_s = [2]u8{ peers_compact[i + 4], peers_compact[i + 5] };
+            const peer_port = std.mem.readIntBig(u16, &peer_port_s);
+
+            const address = std.net.Address.initIp4(ip, peer_port);
+
+            std.debug.warn("address: {}\n", .{address});
+            try peers.append(Peer{ .address = address, .state = PeerState.Unknown });
+
+            i += 6;
+        }
+
+        std.debug.assert(peers.items.len > 0);
+
+        return peers.toOwnedSlice();
     }
 };
 
 fn main() anyerror!void {
-    var dict = value_decoded.root.Object;
-    // TODO: support non compact format i.e. a list of strings
-    const peers = bencode.mapLookup(&dict, "peers").?.String;
-
-    std.debug.assert(peers.len % 6 == 0);
-
-    var i: usize = 0;
-    var peer_addresses = std.ArrayList(std.net.Address).init(allocator);
-
-    while (i < peers.len) {
-        const ip = [4]u8{
-            peers[i],
-            peers[i + 1],
-            peers[i + 2],
-            peers[i + 3],
-        };
-
-        const peer_port_s = [2]u8{ peers[i + 4], peers[i + 5] };
-        const peer_port = std.mem.readIntBig(u16, &peer_port_s);
-
-        const address = std.net.Address.initIp4(ip, peer_port);
-
-        std.debug.warn("address: {}\n", .{address});
-        try peer_addresses.append(address);
-
-        i += 6;
-    }
-
-    std.debug.assert(peer_addresses.items.len > 0);
-    var socket = try std.net.tcpConnectToAddress(peer_addresses.items[1]);
+    var socket = try std.net.tcpConnectToAddress(peers.items[1]);
     defer socket.close();
 
     const handshake = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
