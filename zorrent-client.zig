@@ -1,5 +1,6 @@
 const zorrent = @import("zorrent");
 const std = @import("std");
+pub const io_mode = .evented;
 
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

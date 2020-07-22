@@ -163,7 +163,6 @@ pub const TorrentFile = struct {
         std.debug.warn("Res body: {}", .{res_body.items});
 
         var tracker_response = try bencode.ValueTree.parse(res_body.items[0..], allocator);
-        try bencode.dump(&tracker_response.root, 0);
         return tracker_response;
     }
 
