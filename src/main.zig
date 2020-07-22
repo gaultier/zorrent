@@ -10,31 +10,23 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
     return size * nmemb;
 }
 
-fn hexDump(bytes: []const u8) void {
+pub fn hexDump(bytes: []const u8) void {
     for (bytes) |b| {
         std.debug.warn("{X:0<2} ", .{b});
     }
     std.debug.warn("\n", .{});
 }
 
-pub fn main() anyerror!void {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    const allocator = &arena.allocator;
-
-    var args = try std.process.argsAlloc(allocator);
-    const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
-
-    var file = try std.fs.cwd().openFile(arg, std.fs.File.OpenFlags{ .read = true });
+pub fn parseFile(path: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
+    var file = try std.fs.cwd().openFile(path, std.fs.File.OpenFlags{ .read = true });
     defer file.close();
 
     const content = try file.readAllAlloc(allocator, (try file.stat()).size, std.math.maxInt(usize));
 
-    var value = bencode.ValueTree.parse(content, allocator) catch |err| {
-        try std.io.getStdErr().writer().print("Error parsing: {}\n", .{err});
-        return;
-    };
-    defer value.deinit();
+    return bencode.ValueTree.parse(content, allocator);
+}
 
+fn main() anyerror!void {
     const url = bencode.mapLookup(&value.root.Object, "announce") orelse {
         try std.io.getStdErr().writer().print("Error getting field `announce`: not found\n", .{});
         return;
