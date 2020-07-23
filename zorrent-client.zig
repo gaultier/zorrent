@@ -15,7 +15,12 @@ pub fn main() anyerror!void {
 
     for (peers) |*peer| {
         std.debug.warn("Connecting to peer {}", .{peer.address});
-        try peer.connect();
+        peer.connect() catch |err| {
+            switch (err) {
+                error.ConnectionTimedOut => continue,
+                else => return err,
+            }
+        };
         std.debug.warn("Connected to peer {}", .{peer.address});
 
         try peer.handshake();
