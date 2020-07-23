@@ -36,8 +36,8 @@ pub const Peer = struct {
         self.state = PeerState.Connected;
     }
 
-    pub fn deinit(self: *Peer) !void {
-        return self.socket.?.close();
+    pub fn deinit(self: *Peer) void {
+        self.socket.?.close();
     }
 
     pub fn handshake(self: *Peer) !void {
@@ -56,8 +56,8 @@ pub const Peer = struct {
             self.state = PeerState.Handshaked;
         } else {
             std.debug.warn("Got no handshake\n", .{});
-            try self.deinit();
             self.state = PeerState.Down;
+            return error.WrongHandshake;
         }
     }
 };
