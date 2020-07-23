@@ -27,11 +27,38 @@ pub const PeerState = enum {
 pub const Peer = struct {
     address: std.net.Address,
     state: PeerState,
+    socket: ?std.fs.File,
+    hash_info: [20]u8,
 
     pub fn connect(self: *Peer) !void {
-        var socket = try std.net.tcpConnectToAddress(self.address);
-        defer socket.close();
+        self.socket = try std.net.tcpConnectToAddress(self.address);
+
         self.state = PeerState.Connected;
+    }
+
+    pub fn deinit(self: *Peer) !void {
+        return self.socket.?.close();
+    }
+
+    pub fn handshake(self: *Peer) !void {
+        const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
+        try self.socket.?.writeAll(handshake_payload);
+        try self.socket.?.writeAll(self.hash_info[0..]);
+
+        var response: [1 << 14]u8 = undefined;
+        var res = try self.socket.?.read(response[0..]);
+
+        std.debug.warn("res={} response=", .{res});
+        hexDump(response[0..res]);
+
+        if (res >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", response[0..20])) {
+            std.debug.warn("Got handshake ok\n", .{});
+            self.state = PeerState.Handshaked;
+        } else {
+            std.debug.warn("Got no handshake\n", .{});
+            try self.deinit();
+            self.state = PeerState.Down;
+        }
     }
 };
 
@@ -190,7 +217,7 @@ pub const TorrentFile = struct {
             const address = std.net.Address.initIp4(ip, peer_port);
 
             std.debug.warn("address: {}\n", .{address});
-            try peers.append(Peer{ .address = address, .state = PeerState.Unknown });
+            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .hash_info = self.hash_info });
 
             i += 6;
         }
@@ -202,10 +229,6 @@ pub const TorrentFile = struct {
 };
 
 fn main() anyerror!void {
-    const handshake = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
-    try socket.writeAll(handshake);
-    try socket.writeAll(hash[0..]);
-
     var response: [1 << 14]u8 = undefined;
     var res = try socket.read(response[0..]);
 

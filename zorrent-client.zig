@@ -17,5 +17,8 @@ pub fn main() anyerror!void {
         std.debug.warn("Connecting to peer {}", .{peer.address});
         try peer.connect();
         std.debug.warn("Connected to peer {}", .{peer.address});
+
+        try peer.handshake();
+        std.debug.warn("Handshaked peer {}", .{peer.address});
     }
 }
