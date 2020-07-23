@@ -229,18 +229,6 @@ pub const TorrentFile = struct {
 };
 
 fn main() anyerror!void {
-    var response: [1 << 14]u8 = undefined;
-    var res = try socket.read(response[0..]);
-
-    std.debug.warn("res={} response=", .{res});
-    hexDump(response[0..res]);
-
-    if (res >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", response[0..20])) {
-        std.debug.warn("Got handshake ok\n", .{});
-    } else {
-        std.debug.warn("Got no handshake\n", .{});
-    }
-
     const remote_peer_id = "\x00" ** 20;
     try socket.writeAll(remote_peer_id[0..]);
 
