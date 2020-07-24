@@ -216,7 +216,6 @@ pub const TorrentFile = struct {
 
             const address = std.net.Address.initIp4(ip, peer_port);
 
-            std.debug.warn("address: {}\n", .{address});
             try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null });
 
             i += 6;

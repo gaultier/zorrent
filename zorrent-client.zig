@@ -18,6 +18,7 @@ pub fn main() anyerror!void {
         var frames = std.ArrayList(@Frame(zorrent.Peer.connect)).init(allocator);
         defer frames.deinit();
         try frames.ensureCapacity(peers.len);
+
         for (peers) |*peer| {
             std.debug.warn("Connecting to peer {}\n", .{peer.address});
             frames.addOneAssumeCapacity().* = async peer.connect();
@@ -44,15 +45,19 @@ pub fn main() anyerror!void {
         var frames = std.ArrayList(@Frame(zorrent.Peer.handshake)).init(allocator);
         defer frames.deinit();
         try frames.ensureCapacity(peers.len);
+
         for (peers) |*peer| {
             if (peer.state == zorrent.PeerState.Connected) {
                 std.debug.warn("Handshaking peer {}\n", .{peer.address});
                 frames.addOneAssumeCapacity().* = async peer.handshake(torrent_file.hash_info);
+            } else {
+                frames.addOneAssumeCapacity().* = undefined;
             }
         }
 
         for (peers) |*peer, i| {
             if (peer.state == zorrent.PeerState.Connected) {
+                std.debug.warn("i={} len={}\n", .{ i, frames.items.len });
                 await frames.items[i] catch |err| {
                     switch (err) {
                         error.ConnectionTimedOut => {
