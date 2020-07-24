@@ -40,6 +40,8 @@ pub const Peer = struct {
     }
 
     pub fn handshake(self: *Peer) !void {
+        std.debug.assert(self.state == PeerState.Connected);
+
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(self.hash_info[0..]);
