@@ -36,7 +36,9 @@ pub const Peer = struct {
     }
 
     pub fn deinit(self: *Peer) void {
-        self.socket.?.close();
+        if (self.socket) |socket| {
+            socket.close();
+        }
     }
 
     pub fn handshake(self: *Peer) !void {
