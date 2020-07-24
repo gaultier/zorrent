@@ -32,7 +32,6 @@ pub const Peer = struct {
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
-
         self.state = PeerState.Connected;
     }
 
