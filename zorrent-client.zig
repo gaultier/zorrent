@@ -47,7 +47,7 @@ pub fn main() anyerror!void {
         for (peers) |*peer| {
             if (peer.state == zorrent.PeerState.Connected) {
                 std.debug.warn("Handshaking peer {}\n", .{peer.address});
-                frames.addOneAssumeCapacity().* = async peer.handshake();
+                frames.addOneAssumeCapacity().* = async peer.handshake(torrent_file.hash_info);
             }
         }
 

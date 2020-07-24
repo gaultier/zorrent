@@ -28,7 +28,6 @@ pub const Peer = struct {
     address: std.net.Address,
     state: PeerState,
     socket: ?std.fs.File,
-    hash_info: [20]u8,
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
@@ -39,14 +38,15 @@ pub const Peer = struct {
         if (self.socket) |socket| {
             socket.close();
         }
+        self.state = PeerState.Down;
     }
 
-    pub fn handshake(self: *Peer) !void {
+    pub fn handshake(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Connected);
 
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
-        try self.socket.?.writeAll(self.hash_info[0..]);
+        try self.socket.?.writeAll(hash_info[0..]);
 
         var response: [1 << 14]u8 = undefined;
         var res = try self.socket.?.read(response[0..]);
@@ -55,11 +55,8 @@ pub const Peer = struct {
         hexDump(response[0..res]);
 
         if (res >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", response[0..20])) {
-            std.debug.warn("Got handshake ok\n", .{});
             self.state = PeerState.Handshaked;
         } else {
-            std.debug.warn("Got no handshake\n", .{});
-            self.state = PeerState.Down;
             return error.WrongHandshake;
         }
     }
@@ -220,7 +217,7 @@ pub const TorrentFile = struct {
             const address = std.net.Address.initIp4(ip, peer_port);
 
             std.debug.warn("address: {}\n", .{address});
-            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .hash_info = self.hash_info });
+            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null });
 
             i += 6;
         }
