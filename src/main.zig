@@ -59,15 +59,16 @@ pub const Peer = struct {
         while (true) {
             var response: [1 << 14]u8 = undefined;
             var res = try self.socket.?.readAll(response[0..]);
+            if (res == 0) continue;
 
             std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
             hexDump(response[0..res]);
 
             if (isHandshake(response[0..res])) {
                 self.state = PeerState.Handshaked;
-                std.debug.warn("Peer {} received: handshake", .{self.address});
+                std.debug.warn("Peer {} received: handshake\n", .{self.address});
             } else {
-                std.debug.warn("Peer {} received unknown message", .{self.address});
+                std.debug.warn("Peer {} received unknown message\n", .{self.address});
             }
         }
     }
