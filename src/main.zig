@@ -24,6 +24,10 @@ pub const PeerState = enum {
     Down,
 };
 
+fn isHandshake(buffer: []const u8) bool {
+    return (buffer.len >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
+}
+
 pub const Peer = struct {
     address: std.net.Address,
     state: PeerState,
@@ -41,23 +45,28 @@ pub const Peer = struct {
         self.state = PeerState.Down;
     }
 
-    pub fn handshake(self: *Peer, hash_info: [20]u8) !void {
+    pub fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Connected);
 
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(hash_info[0..]);
+    }
 
-        var response: [1 << 14]u8 = undefined;
-        var res = try self.socket.?.read(response[0..]);
+    pub fn mainLoop(self: *Peer) !void {
+        while (true) {
+            var response: [1 << 14]u8 = undefined;
+            var res = try self.socket.?.readAll(response[0..]);
 
-        std.debug.warn("res={} response=", .{res});
-        hexDump(response[0..res]);
+            std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
+            hexDump(response[0..res]);
 
-        if (res >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", response[0..20])) {
-            self.state = PeerState.Handshaked;
-        } else {
-            return error.WrongHandshake;
+            if (isHandshake(response[0..res])) {
+                self.state = PeerState.Handshaked;
+                std.debug.warn("Peer {} received: handshake", .{self.address});
+            } else {
+                std.debug.warn("Peer {} received unknown message", .{self.address});
+            }
         }
     }
 };

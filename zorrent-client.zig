@@ -40,16 +40,16 @@ pub fn main() anyerror!void {
         }
     }
 
-    // Handshake
+    // sendHandshake
     {
-        var frames = std.ArrayList(@Frame(zorrent.Peer.handshake)).init(allocator);
+        var frames = std.ArrayList(@Frame(zorrent.Peer.sendHandshake)).init(allocator);
         defer frames.deinit();
         try frames.ensureCapacity(peers.len);
 
         for (peers) |*peer| {
             if (peer.state == zorrent.PeerState.Connected) {
                 std.debug.warn("Handshaking peer {}\n", .{peer.address});
-                frames.addOneAssumeCapacity().* = async peer.handshake(torrent_file.hash_info);
+                frames.addOneAssumeCapacity().* = async peer.sendHandshake(torrent_file.hash_info);
             } else {
                 frames.addOneAssumeCapacity().* = undefined;
             }
@@ -57,24 +57,13 @@ pub fn main() anyerror!void {
 
         for (peers) |*peer, i| {
             if (peer.state == zorrent.PeerState.Connected) {
-                std.debug.warn("i={} len={}\n", .{ i, frames.items.len });
-                await frames.items[i] catch |err| {
-                    switch (err) {
-                        error.ConnectionTimedOut => {
-                            std.debug.warn("Peer {} failed\n", .{peer.address});
-                            continue;
-                        },
-                        error.WrongHandshake => {
-                            std.debug.warn("Peer {} sent a wrong handshake\n", .{peer.address});
-                            peer.deinit();
-                            continue;
-                        },
-                        else => return err,
-                    }
-                };
-
+                try await frames.items[i];
                 std.debug.warn("Connected to peer {}\n", .{peer.address});
             }
         }
+    }
+
+    for (peers) |*peer| {
+        try peer.mainLoop();
     }
 }
