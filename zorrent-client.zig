@@ -64,6 +64,8 @@ pub fn main() anyerror!void {
     }
 
     for (peers) |*peer| {
-        try peer.mainLoop();
+        if (peer.state == zorrent.PeerState.Connected) {
+            try peer.mainLoop();
+        }
     }
 }

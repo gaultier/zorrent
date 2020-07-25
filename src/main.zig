@@ -54,6 +54,8 @@ pub const Peer = struct {
     }
 
     pub fn mainLoop(self: *Peer) !void {
+        std.debug.assert(self.state == PeerState.Connected);
+
         while (true) {
             var response: [1 << 14]u8 = undefined;
             var res = try self.socket.?.readAll(response[0..]);
