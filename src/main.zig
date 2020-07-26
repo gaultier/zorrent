@@ -20,7 +20,9 @@ pub fn hexDump(bytes: []const u8) void {
 pub const PeerState = enum {
     Unknown,
     Connected,
+    SentHandshake,
     Handshaked,
+    ReadyToReceivePieces,
     Down,
 };
 
@@ -51,38 +53,60 @@ pub const Peer = struct {
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(hash_info[0..]);
+        self.state = PeerState.SentHandshake;
     }
 
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Unknown);
 
-        std.debug.warn("{}\tConnecting\n", .{self.address});
-        self.connect() catch |err| {
-            switch (err) {
-                error.ConnectionTimedOut, error.ConnectionRefused => {
-                    std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
-                    self.deinit();
-                    return;
-                },
-                else => return err,
-            }
-        };
-
-        std.debug.warn("{}\tConnected\n", .{self.address});
-        try self.sendHandshake(hash_info);
-        std.debug.warn("{}\tHandshaking\n", .{self.address});
-
         while (true) {
+            var res: usize = 0;
             var response: [1 << 14]u8 = undefined;
-            var res = try self.socket.?.readAll(response[0..]);
-            if (res == 0) return;
 
-            if (isHandshake(response[0..res])) {
-                self.state = PeerState.Handshaked;
-                std.debug.warn("{}\tHandshaked\n", .{self.address});
-            } else {
-                std.debug.warn("{}\tUnknown message: ", .{self.address});
-                hexDump(response[0..res]);
+            switch (self.state) {
+                .Unknown => {
+                    std.debug.warn("{}\tConnecting\n", .{self.address});
+                    self.connect() catch |err| {
+                        switch (err) {
+                            error.ConnectionTimedOut, error.ConnectionRefused => {
+                                std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
+                                self.deinit();
+                                return;
+                            },
+                            else => return err,
+                        }
+                    };
+                },
+                .Down => return,
+                .Connected => {
+                    std.debug.warn("{}\tConnected\n", .{self.address});
+
+                    try self.sendHandshake(hash_info);
+                    std.debug.warn("{}\tHandshaking\n", .{self.address});
+                },
+                .SentHandshake => {
+                    if (isHandshake(response[0..res])) {
+                        self.state = PeerState.Handshaked;
+                        std.debug.warn("{}\tHandshaked\n", .{self.address});
+                    }
+                },
+                .Handshaked => {
+                    const remote_peer_id = "\x00" ** 20;
+                    try self.socket.?.writeAll(remote_peer_id[0..]);
+                    try self.socket.?.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
+                    self.state = PeerState.ReadyToReceivePieces;
+                },
+                .ReadyToReceivePieces => {
+                    std.debug.warn("{}\tUnknown message: ", .{self.address});
+                    hexDump(response[0..res]);
+                },
+            }
+
+            res = try self.socket.?.readAll(response[0..]);
+            if (res == 0) {
+                // return;
+                std.time.sleep(1_000_000);
+                continue;
             }
         }
     }
@@ -254,12 +278,7 @@ pub const TorrentFile = struct {
 };
 
 fn main() anyerror!void {
-    const remote_peer_id = "\x00" ** 20;
-    try socket.writeAll(remote_peer_id[0..]);
-
     try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 1 }); // unchoke
-    try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
-    res = try socket.read(response[0..]);
 
     try socket.writeAll(&[_]u8{
         0,    0, 0, 0xd,

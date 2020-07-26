@@ -20,5 +20,7 @@ pub fn main() anyerror!void {
     for (peers) |*peer| {
         frames.addOneAssumeCapacity().* = async peer.handle(torrent_file.hash_info);
     }
-    while (true) {}
+    for (frames.items) |*frame| {
+        _ = try await frame;
+    }
 }
