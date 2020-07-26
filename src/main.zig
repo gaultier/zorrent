@@ -53,21 +53,40 @@ pub const Peer = struct {
         try self.socket.?.writeAll(hash_info[0..]);
     }
 
-    pub fn mainLoop(self: *Peer) !void {
-        std.debug.assert(self.state == PeerState.Connected);
+    pub fn handle(self: *Peer, hash_info: [20]u8) !void {
+        std.debug.assert(self.state == PeerState.Unknown);
 
-        var response: [1 << 14]u8 = undefined;
-        var res = try self.socket.?.readAll(response[0..]);
-        if (res == 0) return;
+        std.debug.warn("Connecting to peer {}\n", .{self.address});
+        self.connect() catch |err| {
+            switch (err) {
+                error.ConnectionTimedOut, error.ConnectionRefused => {
+                    std.debug.warn("Peer {} failed\n", .{self.address});
+                    self.deinit();
+                    return;
+                },
+                else => return err,
+            }
+        };
 
-        std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
-        hexDump(response[0..res]);
+        std.debug.warn("Connected to peer {}\n", .{self.address});
+        try self.sendHandshake(hash_info);
+        std.debug.warn("Sent handshake to peer {}\n", .{self.address});
 
-        if (isHandshake(response[0..res])) {
-            self.state = PeerState.Handshaked;
-            std.debug.warn("Peer {} received: handshake\n", .{self.address});
-        } else {
-            std.debug.warn("Peer {} received unknown message\n", .{self.address});
+        while (true) {
+            var response: [1 << 14]u8 = undefined;
+            var res = try self.socket.?.readAll(response[0..]);
+            if (res == 0) return;
+
+            std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
+            hexDump(response[0..res]);
+
+            if (isHandshake(response[0..res])) {
+                self.state = PeerState.Handshaked;
+                std.debug.warn("Peer {} received: handshake\n", .{self.address});
+            } else {
+                std.debug.warn("Peer {} received unknown message\n", .{self.address});
+            }
+            std.time.sleep(1);
         }
     }
 };
