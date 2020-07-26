@@ -37,23 +37,18 @@ pub const Peer = struct {
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
-        self.state = PeerState.Connected;
     }
 
     pub fn deinit(self: *Peer) void {
         if (self.socket) |socket| {
             socket.close();
         }
-        self.state = PeerState.Down;
     }
 
     pub fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
-        std.debug.assert(self.state == PeerState.Connected);
-
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(hash_info[0..]);
-        self.state = PeerState.SentHandshake;
     }
 
     pub fn sendInterested(self: *Peer) !void {
@@ -71,7 +66,6 @@ pub const Peer = struct {
 
             switch (err) {
                 error.ConnectionResetByPeer => {
-                    self.state = PeerState.Down;
                     return 0;
                 },
                 else => return err,
@@ -81,8 +75,6 @@ pub const Peer = struct {
     }
 
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
-        std.debug.assert(self.state == PeerState.Unknown);
-
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
