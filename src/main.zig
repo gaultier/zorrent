@@ -84,7 +84,6 @@ pub const Peer = struct {
                 std.debug.warn("{}\tUnknown message: ", .{self.address});
                 hexDump(response[0..res]);
             }
-            // std.time.sleep(1);
         }
     }
 };
