@@ -56,6 +56,15 @@ pub const Peer = struct {
         self.state = PeerState.SentHandshake;
     }
 
+    pub fn sendInterested(self: *Peer) !void {
+        try self.socket.?.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
+    }
+
+    pub fn sendPeerId(self: *Peer) !void {
+        const remote_peer_id = "\x00" ** 20;
+        try self.socket.?.writeAll(remote_peer_id[0..]);
+    }
+
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Unknown);
 
@@ -103,9 +112,8 @@ pub const Peer = struct {
                     }
                 },
                 .Handshaked => {
-                    const remote_peer_id = "\x00" ** 20;
-                    try self.socket.?.writeAll(remote_peer_id[0..]);
-                    try self.socket.?.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
+                    try self.sendPeerId();
+                    try self.sendInterested();
                     self.state = PeerState.ReadyToReceivePieces;
                 },
                 .ReadyToReceivePieces => {
