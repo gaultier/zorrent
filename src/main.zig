@@ -70,23 +70,21 @@ pub const Peer = struct {
 
         std.debug.warn("{}\tConnected\n", .{self.address});
         try self.sendHandshake(hash_info);
-        std.debug.warn("{}\tSend handshake\n", .{self.address});
+        std.debug.warn("{}\tHandshaking\n", .{self.address});
 
         while (true) {
             var response: [1 << 14]u8 = undefined;
             var res = try self.socket.?.readAll(response[0..]);
             if (res == 0) return;
 
-            std.debug.warn("{}\tReceived res={} response=", .{ self.address, res });
-            hexDump(response[0..res]);
-
             if (isHandshake(response[0..res])) {
                 self.state = PeerState.Handshaked;
                 std.debug.warn("{}\tHandshaked\n", .{self.address});
             } else {
-                std.debug.warn("{}\tUnknown message\n", .{self.address});
+                std.debug.warn("{}\tUnknown message: ", .{self.address});
+                hexDump(response[0..res]);
             }
-            std.time.sleep(1);
+            // std.time.sleep(1);
         }
     }
 };
