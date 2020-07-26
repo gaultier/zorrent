@@ -56,11 +56,11 @@ pub const Peer = struct {
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Unknown);
 
-        std.debug.warn("Connecting to peer {}\n", .{self.address});
+        std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
                 error.ConnectionTimedOut, error.ConnectionRefused => {
-                    std.debug.warn("Peer {} failed\n", .{self.address});
+                    std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
                     self.deinit();
                     return;
                 },
@@ -68,23 +68,23 @@ pub const Peer = struct {
             }
         };
 
-        std.debug.warn("Connected to peer {}\n", .{self.address});
+        std.debug.warn("{}\tConnected\n", .{self.address});
         try self.sendHandshake(hash_info);
-        std.debug.warn("Sent handshake to peer {}\n", .{self.address});
+        std.debug.warn("{}\tSend handshake\n", .{self.address});
 
         while (true) {
             var response: [1 << 14]u8 = undefined;
             var res = try self.socket.?.readAll(response[0..]);
             if (res == 0) return;
 
-            std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
+            std.debug.warn("{}\tReceived res={} response=", .{ self.address, res });
             hexDump(response[0..res]);
 
             if (isHandshake(response[0..res])) {
                 self.state = PeerState.Handshaked;
-                std.debug.warn("Peer {} received: handshake\n", .{self.address});
+                std.debug.warn("{}\tHandshaked\n", .{self.address});
             } else {
-                std.debug.warn("Peer {} received unknown message\n", .{self.address});
+                std.debug.warn("{}\tUnknown message\n", .{self.address});
             }
             std.time.sleep(1);
         }
