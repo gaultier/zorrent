@@ -168,7 +168,7 @@ pub const TorrentFile = struct {
         var queryUrl = try self.buildAnnounceUrl(allocator);
         defer allocator.destroy(&queryUrl);
 
-        std.debug.warn("queryUrl=`{}`\n", .{queryUrl});
+        std.debug.warn("queryUrl=`{}`\n", .{queryUrl}); // TODO: rm
 
         var curl_res: c.CURLcode = undefined;
         curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
