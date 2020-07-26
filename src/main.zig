@@ -65,11 +65,25 @@ pub const Peer = struct {
         try self.socket.?.writeAll(remote_peer_id[0..]);
     }
 
+    pub fn read(self: *Peer, response: *[1 << 14]u8) !usize {
+        const res = self.socket.?.readAll(response.*[0..]) catch |err| {
+            defer self.deinit();
+
+            switch (err) {
+                error.ConnectionResetByPeer => {
+                    self.state = PeerState.Down;
+                    return 0;
+                },
+                else => return err,
+            }
+        };
+        return res;
+    }
+
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Unknown);
 
         while (true) {
-            var res: usize = 0;
             var response: [1 << 14]u8 = undefined;
 
             switch (self.state) {
@@ -94,15 +108,7 @@ pub const Peer = struct {
                     std.debug.warn("{}\tHandshaking\n", .{self.address});
                 },
                 .SentHandshake => {
-                    res = self.socket.?.readAll(response[0..]) catch |err| {
-                        switch (err) {
-                            error.ConnectionResetByPeer => {
-                                self.state = PeerState.Down;
-                                return;
-                            },
-                            else => return err,
-                        }
-                    };
+                    const res = try self.read(&response);
                     if (isHandshake(response[0..res])) {
                         self.state = PeerState.Handshaked;
                         std.debug.warn("{}\tHandshaked\n", .{self.address});
