@@ -85,9 +85,21 @@ pub const Peer = struct {
                     std.debug.warn("{}\tHandshaking\n", .{self.address});
                 },
                 .SentHandshake => {
+                    res = self.socket.?.readAll(response[0..]) catch |err| {
+                        switch (err) {
+                            error.ConnectionResetByPeer => {
+                                self.state = PeerState.Down;
+                                return;
+                            },
+                            else => return err,
+                        }
+                    };
                     if (isHandshake(response[0..res])) {
                         self.state = PeerState.Handshaked;
                         std.debug.warn("{}\tHandshaked\n", .{self.address});
+                    } else {
+                        std.debug.warn("{}\tUnknown message: ", .{self.address});
+                        hexDump(response[0..res]);
                     }
                 },
                 .Handshaked => {
@@ -97,16 +109,18 @@ pub const Peer = struct {
                     self.state = PeerState.ReadyToReceivePieces;
                 },
                 .ReadyToReceivePieces => {
-                    std.debug.warn("{}\tUnknown message: ", .{self.address});
-                    hexDump(response[0..res]);
+                    // res = self.socket.?.readAll(response[0..]) catch |err| {
+                    //     switch (err) {
+                    //         error.ConnectionResetByPeer => {
+                    //             self.state = PeerState.Down;
+                    //             return;
+                    //         },
+                    //         else => return err,
+                    //     }
+                    // };
+                    // std.debug.warn("{}\tUnknown message: ", .{self.address});
+                    // hexDump(response[0..res]);
                 },
-            }
-
-            res = try self.socket.?.readAll(response[0..]);
-            if (res == 0) {
-                // return;
-                std.time.sleep(1_000_000);
-                continue;
             }
         }
     }
