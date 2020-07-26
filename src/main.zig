@@ -123,15 +123,7 @@ pub const Peer = struct {
                     self.state = PeerState.ReadyToReceivePieces;
                 },
                 .ReadyToReceivePieces => {
-                    // res = self.socket.?.readAll(response[0..]) catch |err| {
-                    //     switch (err) {
-                    //         error.ConnectionResetByPeer => {
-                    //             self.state = PeerState.Down;
-                    //             return;
-                    //         },
-                    //         else => return err,
-                    //     }
-                    // };
+                    // const res = try self.read(&response);
                     // std.debug.warn("{}\tUnknown message: ", .{self.address});
                     // hexDump(response[0..res]);
                 },
