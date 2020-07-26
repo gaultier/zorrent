@@ -48,7 +48,7 @@ pub fn main() anyerror!void {
 
         for (peers) |*peer| {
             if (peer.state == zorrent.PeerState.Connected) {
-                std.debug.warn("Handshaking peer {}\n", .{peer.address});
+                std.debug.warn("Sending handshake peer {}\n", .{peer.address});
                 frames.addOneAssumeCapacity().* = async peer.sendHandshake(torrent_file.hash_info);
             } else {
                 frames.addOneAssumeCapacity().* = undefined;
@@ -58,14 +58,16 @@ pub fn main() anyerror!void {
         for (peers) |*peer, i| {
             if (peer.state == zorrent.PeerState.Connected) {
                 try await frames.items[i];
-                std.debug.warn("Connected to peer {}\n", .{peer.address});
+                std.debug.warn("Sent handshake to peer {}\n", .{peer.address});
             }
         }
     }
 
-    for (peers) |*peer| {
-        if (peer.state == zorrent.PeerState.Connected) {
-            try peer.mainLoop();
+    while (true) {
+        for (peers) |*peer| {
+            if (peer.state == zorrent.PeerState.Connected) {
+                try peer.mainLoop();
+            }
         }
     }
 }

@@ -56,20 +56,18 @@ pub const Peer = struct {
     pub fn mainLoop(self: *Peer) !void {
         std.debug.assert(self.state == PeerState.Connected);
 
-        while (true) {
-            var response: [1 << 14]u8 = undefined;
-            var res = try self.socket.?.readAll(response[0..]);
-            if (res == 0) continue;
+        var response: [1 << 14]u8 = undefined;
+        var res = try self.socket.?.readAll(response[0..]);
+        if (res == 0) return;
 
-            std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
-            hexDump(response[0..res]);
+        std.debug.warn("Peer {} received: res={} response=", .{ self.address, res });
+        hexDump(response[0..res]);
 
-            if (isHandshake(response[0..res])) {
-                self.state = PeerState.Handshaked;
-                std.debug.warn("Peer {} received: handshake\n", .{self.address});
-            } else {
-                std.debug.warn("Peer {} received unknown message\n", .{self.address});
-            }
+        if (isHandshake(response[0..res])) {
+            self.state = PeerState.Handshaked;
+            std.debug.warn("Peer {} received: handshake\n", .{self.address});
+        } else {
+            std.debug.warn("Peer {} received unknown message\n", .{self.address});
         }
     }
 };
