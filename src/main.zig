@@ -66,7 +66,7 @@ pub const Peer = struct {
     }
 
     pub fn read(self: *Peer, response: *[1 << 14]u8) !usize {
-        const res = self.socket.?.readAll(response.*[0..]) catch |err| {
+        const len = self.socket.?.read(response.*[0..]) catch |err| {
             defer self.deinit();
 
             switch (err) {
@@ -77,56 +77,54 @@ pub const Peer = struct {
                 else => return err,
             }
         };
-        return res;
+        return len;
     }
 
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
         std.debug.assert(self.state == PeerState.Unknown);
 
+        std.debug.warn("{}\tConnecting\n", .{self.address});
+        self.connect() catch |err| {
+            switch (err) {
+                error.ConnectionTimedOut, error.ConnectionRefused => {
+                    std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
+                    self.deinit();
+                    return;
+                },
+                else => return err,
+            }
+        };
+        std.debug.warn("{}\tConnected\n", .{self.address});
+
+        std.debug.warn("{}\tHandshaking\n", .{self.address});
+        try self.sendHandshake(hash_info);
+
+        var response: [1 << 14]u8 = undefined;
+        var len = try self.read(&response);
+        if (isHandshake(response[0..len])) {
+            std.debug.warn("{}\tHandshaked\n", .{self.address});
+        } else {
+            std.debug.warn("{}\tUnknown message: ", .{self.address});
+            hexDump(response[0..len]);
+        }
+        try self.sendPeerId();
+        try self.sendInterested();
+
         while (true) {
-            var response: [1 << 14]u8 = undefined;
+            try self.socket.?.writeAll(&[_]u8{
+                0,    0, 0, 0xd,
+                0x6,  0, 0, 0,
+                0,    0, 0, 0,
+                0,    0, 0, 0,
+                0x40,
+            }); // request first piece
 
-            switch (self.state) {
-                .Unknown => {
-                    std.debug.warn("{}\tConnecting\n", .{self.address});
-                    self.connect() catch |err| {
-                        switch (err) {
-                            error.ConnectionTimedOut, error.ConnectionRefused => {
-                                std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
-                                self.deinit();
-                                return;
-                            },
-                            else => return err,
-                        }
-                    };
-                },
-                .Down => return,
-                .Connected => {
-                    std.debug.warn("{}\tConnected\n", .{self.address});
-
-                    try self.sendHandshake(hash_info);
-                    std.debug.warn("{}\tHandshaking\n", .{self.address});
-                },
-                .SentHandshake => {
-                    const res = try self.read(&response);
-                    if (isHandshake(response[0..res])) {
-                        self.state = PeerState.Handshaked;
-                        std.debug.warn("{}\tHandshaked\n", .{self.address});
-                    } else {
-                        std.debug.warn("{}\tUnknown message: ", .{self.address});
-                        hexDump(response[0..res]);
-                    }
-                },
-                .Handshaked => {
-                    try self.sendPeerId();
-                    try self.sendInterested();
-                    self.state = PeerState.ReadyToReceivePieces;
-                },
-                .ReadyToReceivePieces => {
-                    // const res = try self.read(&response);
-                    // std.debug.warn("{}\tUnknown message: ", .{self.address});
-                    // hexDump(response[0..res]);
-                },
+            len = try self.read(&response);
+            if (len > 0) {
+                std.debug.warn("{}\tUnknown message: size={} ", .{ self.address, len });
+                hexDump(response[0..len]);
+            } else {
+                std.time.sleep(1_000_000_000);
             }
         }
     }
@@ -299,14 +297,6 @@ pub const TorrentFile = struct {
 
 fn main() anyerror!void {
     try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 1 }); // unchoke
-
-    try socket.writeAll(&[_]u8{
-        0,    0, 0, 0xd,
-        0x6,  0, 0, 0,
-        0,    0, 0, 0,
-        0,    0, 0, 0,
-        0x40,
-    }); // request first piece
 
     // Unchoke
     res = try socket.read(response[0..]);
