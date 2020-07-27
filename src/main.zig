@@ -17,6 +17,18 @@ pub fn hexDump(bytes: []const u8) void {
     std.debug.warn("\n", .{});
 }
 
+pub const MessageId = enum(u8) {
+    Choke = 0,
+    Unchoke = 1,
+    Interested = 2,
+    Uninterested = 3,
+    Have = 4,
+    Bitfield = 5,
+    Request = 6,
+    Piece = 7,
+    Cancel = 8,
+};
+
 pub const PeerState = enum {
     Unknown,
     Connected,
@@ -74,6 +86,21 @@ pub const Peer = struct {
         return len;
     }
 
+    pub fn requestPiece(piece_index: u32) !void {
+        const length: u32 = 1 << 14;
+        const begin = piece_index * length;
+
+        var payload: [17]u8 = undefined;
+        const payload_len = 1 + 3 * 4;
+        std.mem.writeIntSliceBig(u32, payload[0..], payload_len);
+        std.mem.writeIntSliceBig(u8, payload[4..], @enumToInt(MessageId.Request));
+        std.mem.writeIntSliceBig(u32, payload[5..], piece_index);
+        std.mem.writeIntSliceBig(u32, payload[9..], begin);
+        std.mem.writeIntSliceBig(u32, payload[13..], length);
+
+        try self.socket.?.writeAll(&payload);
+    }
+
     pub fn handle(self: *Peer, hash_info: [20]u8) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
@@ -102,19 +129,15 @@ pub const Peer = struct {
         try self.sendPeerId();
         try self.sendInterested();
 
+        var piece_index = 0;
         while (true) {
-            try self.socket.?.writeAll(&[_]u8{
-                0,    0, 0, 0xd,
-                0x6,  0, 0, 0,
-                0,    0, 0, 0,
-                0,    0, 0, 0,
-                0x40,
-            }); // request first piece
+            try self.requestPiece(piece_index);
 
             len = try self.read(&response);
             if (len > 0) {
                 std.debug.warn("{}\tUnknown message: size={} ", .{ self.address, len });
                 hexDump(response[0..len]);
+                piece_index += 1;
             } else {
                 std.time.sleep(1_000_000_000);
             }
