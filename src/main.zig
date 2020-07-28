@@ -86,13 +86,14 @@ pub const Peer = struct {
         return len;
     }
 
-    pub fn requestPiece(piece_index: u32) !void {
+    pub fn requestPiece(self: *Peer, piece_index: u32) !void {
         const length: u32 = 1 << 14;
         const begin = piece_index * length;
 
         var payload: [17]u8 = undefined;
         const payload_len = 1 + 3 * 4;
         std.mem.writeIntSliceBig(u32, payload[0..], payload_len);
+
         std.mem.writeIntSliceBig(u8, payload[4..], @enumToInt(MessageId.Request));
         std.mem.writeIntSliceBig(u32, payload[5..], piece_index);
         std.mem.writeIntSliceBig(u32, payload[9..], begin);
@@ -129,7 +130,7 @@ pub const Peer = struct {
         try self.sendPeerId();
         try self.sendInterested();
 
-        var piece_index = 0;
+        var piece_index: u32 = 0;
         while (true) {
             try self.requestPiece(piece_index);
 
