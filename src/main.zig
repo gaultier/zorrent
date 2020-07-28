@@ -132,7 +132,9 @@ pub const Peer = struct {
 
         var piece_index: u32 = 0;
         while (true) {
-            try self.requestPiece(piece_index);
+            if (piece_index < 262144) { // FIXME
+                try self.requestPiece(piece_index);
+            }
 
             len = try self.read(&response);
             if (len > 0) {
