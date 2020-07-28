@@ -95,7 +95,8 @@ pub const Peer = struct {
         std.mem.writeIntSliceBig(u32, payload[0..], payload_len);
 
         const tag: u8 = @enumToInt(MessageId.Request);
-        std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload), tag);
+        var ptr = &payload[4];
+        std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &ptr), tag);
         std.mem.writeIntSliceBig(u32, payload[5..], piece_index);
         std.mem.writeIntSliceBig(u32, payload[9..], begin);
         std.mem.writeIntSliceBig(u32, payload[13..], length);
