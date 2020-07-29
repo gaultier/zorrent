@@ -172,8 +172,8 @@ pub const TorrentFile = struct {
         const announce = (bencode.mapLookup(&value.root.Object, "announce") orelse return error.FieldNotFound).String;
 
         const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
-        var pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
-        const pieces_len = (bencode.mapLookup(&field_info.Object, "pieces length") orelse return error.FieldNotFound).Integer;
+        const pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
+        const pieces_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
         const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
 
