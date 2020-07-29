@@ -157,6 +157,8 @@ pub const TorrentFile = struct {
     downloadedBytesCount: usize,
     uploadedBytesCount: usize,
     leftBytesCount: usize,
+    pieces: []const u8,
+    pieces_len: usize,
 
     pub fn parse(path: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
         var file = try std.fs.cwd().openFile(path, std.fs.File.OpenFlags{ .read = true });
@@ -170,6 +172,8 @@ pub const TorrentFile = struct {
         const announce = (bencode.mapLookup(&value.root.Object, "announce") orelse return error.FieldNotFound).String;
 
         const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
+        var pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
+        const pieces_len = (bencode.mapLookup(&field_info.Object, "pieces length") orelse return error.FieldNotFound).Integer;
 
         const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
 
@@ -187,6 +191,8 @@ pub const TorrentFile = struct {
             .uploadedBytesCount = 0,
             .downloadedBytesCount = 0,
             .leftBytesCount = @intCast(usize, length),
+            .pieces_len = @intCast(usize, pieces_len),
+            .pieces = pieces,
         };
     }
 
