@@ -104,7 +104,7 @@ pub const Peer = struct {
         try self.socket.?.writeAll(&payload);
     }
 
-    pub fn handle(self: *Peer, hash_info: [20]u8) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
@@ -119,7 +119,7 @@ pub const Peer = struct {
         std.debug.warn("{}\tConnected\n", .{self.address});
 
         std.debug.warn("{}\tHandshaking\n", .{self.address});
-        try self.sendHandshake(hash_info);
+        try self.sendHandshake(torrent_file.hash_info);
 
         var response: [1 << 14]u8 = undefined;
         var len = try self.read(&response);
@@ -133,8 +133,9 @@ pub const Peer = struct {
         try self.sendInterested();
 
         var piece_index: u32 = 0;
+        const pieces_len: usize = torrent_file.pieces.len / torrent_file.piece_len;
         while (true) {
-            if (piece_index < 262144) { // FIXME
+            if (piece_index < pieces_len) {
                 try self.requestPiece(piece_index);
             }
 
