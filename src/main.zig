@@ -104,6 +104,22 @@ pub const Peer = struct {
         try self.socket.?.writeAll(&payload);
     }
 
+    pub fn parseMessage(self: *Peer, payload: []const u8) !void { // FIXME
+        if (payload.len < 5) return error.MalformedMessage;
+
+        const len = std.mem.readIntSliceBig(u32, payload[0..4]);
+        const tag = @intToEnum(MessageId, std.mem.readIntSliceBig(u8, payload[4..5]));
+
+        std.debug.warn("{}\tlen={} tag={}\n", .{ self.address, len, tag });
+
+        if (payload.len < 4 + len) return error.MalformedMessage;
+
+        switch (tag) {
+            .Choke, .Bitfield, .Unchoke => {},
+            else => {},
+        }
+    }
+
     pub fn handle(self: *Peer, torrent_file: TorrentFile) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
@@ -141,6 +157,11 @@ pub const Peer = struct {
 
             len = try self.read(&response);
             if (len > 0) {
+                self.parseMessage(response[0..]) catch |err| {
+                    std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
+                    return err;
+                };
+
                 std.debug.warn("{}\tUnknown message: size={} ", .{ self.address, len });
                 hexDump(response[0..len]);
                 piece_index += 1;
