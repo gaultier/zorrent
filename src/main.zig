@@ -189,6 +189,8 @@ pub const Peer = struct {
             if (piece_index < torrent_file.pieces.len) {
                 try self.requestPiece(piece_index);
                 piece_index += 1;
+
+                std.time.sleep(1_000);
             }
 
             len = try self.read(&response);
@@ -199,9 +201,7 @@ pub const Peer = struct {
                 };
 
                 std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
-            } else {
-                std.time.sleep(1_000_000_000);
-            }
+            } else {}
         }
     }
 };
