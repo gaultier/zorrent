@@ -86,8 +86,7 @@ pub const Peer = struct {
 
     pub fn read(self: *Peer, response: *[1 << 14]u8) !usize {
         const len = self.socket.?.read(response.*[0..]) catch |err| {
-            defer self.deinit();
-
+            // defer self.deinit();
             switch (err) {
                 error.ConnectionResetByPeer => {
                     return 0;
@@ -113,6 +112,7 @@ pub const Peer = struct {
         std.mem.writeIntSliceBig(u32, payload[9..], begin);
         std.mem.writeIntSliceBig(u32, payload[13..], length);
 
+        std.debug.warn("{}\tRequest piece #{}\n", .{ self.address, piece_index });
         try self.socket.?.writeAll(&payload);
     }
 
@@ -161,7 +161,7 @@ pub const Peer = struct {
             switch (err) {
                 error.ConnectionTimedOut, error.ConnectionRefused => {
                     std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
-                    self.deinit();
+                    // self.deinit();
                     return;
                 },
                 else => return err,
@@ -184,10 +184,11 @@ pub const Peer = struct {
         try self.sendInterested();
 
         var piece_index: u32 = 0;
-        const pieces_len: usize = torrent_file.pieces.len / torrent_file.piece_len;
+        const pieces_len: usize = torrent_file.pieces.len / 20;
         while (true) {
-            if (piece_index < pieces_len) {
+            if (piece_index < torrent_file.pieces.len) {
                 try self.requestPiece(piece_index);
+                piece_index += 1;
             }
 
             len = try self.read(&response);
@@ -198,7 +199,6 @@ pub const Peer = struct {
                 };
 
                 std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
-                piece_index += 1;
             } else {
                 std.time.sleep(1_000_000_000);
             }
