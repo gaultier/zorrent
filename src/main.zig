@@ -186,22 +186,20 @@ pub const Peer = struct {
         var piece_index: u32 = 0;
         const pieces_len: usize = torrent_file.pieces.len / 20;
         while (true) {
-            if (piece_index < torrent_file.pieces.len) {
+            if (piece_index == 0) {
                 try self.requestPiece(piece_index);
                 piece_index += 1;
+            } else {
+                len = try self.read(&response);
+                if (len > 0) {
+                    const msg = self.parseMessage(response[0..]) catch |err| {
+                        std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
+                        return err;
+                    };
 
-                std.time.sleep(1_000);
+                    std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+                }
             }
-
-            len = try self.read(&response);
-            if (len > 0) {
-                const msg = self.parseMessage(response[0..]) catch |err| {
-                    std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                    return err;
-                };
-
-                std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
-            } else {}
         }
     }
 };
