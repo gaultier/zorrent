@@ -18,7 +18,7 @@ pub fn main() anyerror!void {
     try frames.ensureCapacity(peers.len);
 
     for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file);
+        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, allocator);
     }
     for (frames.items) |*frame| {
         _ = try await frame;

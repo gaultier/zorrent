@@ -155,7 +155,7 @@ pub const Peer = struct {
         };
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, allocator: *std.mem.Allocator) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
@@ -172,8 +172,10 @@ pub const Peer = struct {
         std.debug.warn("{}\tHandshaking\n", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
-        var response: [1 << 14]u8 = undefined;
-        var len = try self.read(&response);
+        var response = try allocator.create([1 << 14]u8);
+        defer allocator.destroy(response);
+
+        var len = try self.read(response);
         if (isHandshake(response[0..len])) {
             std.debug.warn("{}\tHandshaked\n", .{self.address});
         } else {
@@ -190,7 +192,7 @@ pub const Peer = struct {
                 try self.requestPiece(piece_index);
                 piece_index += 1;
             } else {
-                len = try self.read(&response);
+                len = try self.read(response);
                 if (len > 0) {
                     const msg = self.parseMessage(response[0..]) catch |err| {
                         std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
