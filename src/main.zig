@@ -29,6 +29,18 @@ pub const MessageId = enum(u8) {
     Cancel = 8,
 };
 
+pub const Message = union(MessageId) {
+    Choke: void,
+    Unchoke: void,
+    Interested: void,
+    Uninterested: void,
+    Bitfield: []const u8,
+    Have: u32,
+    Request: [3]u32,
+    Cancel: [3]u32,
+    Piece: [3]u32,
+};
+
 pub const PeerState = enum {
     Unknown,
     Connected,
@@ -104,20 +116,43 @@ pub const Peer = struct {
         try self.socket.?.writeAll(&payload);
     }
 
-    pub fn parseMessage(self: *Peer, payload: []const u8) !void { // FIXME
+    pub fn parseMessage(self: *Peer, payload: []const u8) !Message { // FIXME
         if (payload.len < 5) return error.MalformedMessage;
 
         const len = std.mem.readIntSliceBig(u32, payload[0..4]);
         const tag = @intToEnum(MessageId, std.mem.readIntSliceBig(u8, payload[4..5]));
 
-        std.debug.warn("{}\tlen={} tag={}\n", .{ self.address, len, tag });
-
         if (payload.len < 4 + len) return error.MalformedMessage;
 
-        switch (tag) {
-            .Choke, .Bitfield, .Unchoke => {},
-            else => {},
-        }
+        return switch (tag) {
+            .Choke => Message.Choke,
+            .Unchoke => Message.Unchoke,
+            .Interested => Message.Interested,
+            .Uninterested => Message.Uninterested,
+            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[4..]) },
+            .Bitfield => Message{ .Bitfield = payload[4..] },
+            .Request => Message{
+                .Request = [3]u32{
+                    std.mem.readIntSliceBig(u32, payload[4..]),
+                    std.mem.readIntSliceBig(u32, payload[8..]),
+                    std.mem.readIntSliceBig(u32, payload[12..]),
+                },
+            },
+            .Piece => Message{
+                .Piece = [3]u32{
+                    std.mem.readIntSliceBig(u32, payload[4..]),
+                    std.mem.readIntSliceBig(u32, payload[8..]),
+                    std.mem.readIntSliceBig(u32, payload[12..]),
+                },
+            },
+            .Cancel => Message{
+                .Cancel = [3]u32{
+                    std.mem.readIntSliceBig(u32, payload[4..]),
+                    std.mem.readIntSliceBig(u32, payload[8..]),
+                    std.mem.readIntSliceBig(u32, payload[12..]),
+                },
+            },
+        };
     }
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile) !void {
@@ -157,13 +192,12 @@ pub const Peer = struct {
 
             len = try self.read(&response);
             if (len > 0) {
-                self.parseMessage(response[0..]) catch |err| {
+                const msg = self.parseMessage(response[0..]) catch |err| {
                     std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
                     return err;
                 };
 
-                std.debug.warn("{}\tUnknown message: size={} ", .{ self.address, len });
-                hexDump(response[0..len]);
+                std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
                 piece_index += 1;
             } else {
                 std.time.sleep(1_000_000_000);
