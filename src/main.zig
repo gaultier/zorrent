@@ -129,12 +129,12 @@ pub const Peer = struct {
         std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
     }
 
-    pub fn parseMessage(self: *Peer, payload: []const u8, allocator: *std.mem.Allocator) ![]Message {
-        if (payload.len < 5) return error.MalformedMessage;
+    pub fn parseMessage(self: *Peer, response: [1 << 14]u8, allocator: *std.mem.Allocator) ![]Message {
+        // if (payload.len < 5) return error.MalformedMessage;
 
         // std.debug.warn("{}\tParsing message: ", .{self.address});
         // hexDump(payload);
-
+        const len = self.read(response);
         var parse_len = payload.len;
 
         var messages = std.ArrayList(Message).init(allocator);
@@ -231,7 +231,7 @@ pub const Peer = struct {
             // } else {
             len = try self.read(response);
             if (len > 0) {
-                const msgs = self.parseMessage(response[0..len], allocator) catch |err| {
+                const msgs = self.parseMessage(&response, allocator) catch |err| {
                     std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
                     return err;
                 };
