@@ -76,7 +76,8 @@ pub const Peer = struct {
     }
 
     pub fn sendInterested(self: *Peer) !void {
-        try self.socket.?.writeAll(&[_]u8{ 0, 0, 0, 1, 2 }); // interested
+        const msg = [_]u8{ 0, 0, 0, 1, 2 };
+        try self.socket.?.writeAll(msg[0..]); // interested
     }
 
     pub fn sendPeerId(self: *Peer) !void {
@@ -113,7 +114,7 @@ pub const Peer = struct {
 
         std.debug.warn("{}\tRequest piece #{}\n", .{ self.address, piece_index });
         hexDump(payload[0..]);
-        try self.socket.?.writeAll(&payload);
+        try self.socket.?.writeAll(payload[0..]);
         std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
     }
 
@@ -190,7 +191,7 @@ pub const Peer = struct {
             hexDump(response);
         }
         // try self.sendPeerId();
-        // try self.sendInterested();
+        try self.sendInterested();
 
         var piece_index: u32 = 0x410;
         // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
@@ -210,8 +211,11 @@ pub const Peer = struct {
                 };
 
                 std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
-                // }
+            } else {
+                std.debug.warn("{}\t.\n", .{self.address});
+                std.time.sleep(1_000_000_000);
             }
+            // }
         }
     }
 };
