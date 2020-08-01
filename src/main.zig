@@ -99,7 +99,7 @@ pub const Peer = struct {
 
     pub fn requestPiece(self: *Peer, piece_index: u32) !void {
         const length: u32 = 1 << 14;
-        const begin = piece_index * length;
+        const begin = 0; //piece_index * length;
 
         var payload: [17]u8 = undefined;
         const payload_len = 1 + 3 * 4;
@@ -124,7 +124,10 @@ pub const Peer = struct {
         hexDump(payload);
 
         const len = std.mem.readIntSliceBig(u32, payload[0..4]);
-        const tag = @intToEnum(MessageId, std.mem.readIntSliceBig(u8, payload[4..5]));
+        const itag = std.mem.readIntSliceBig(u8, payload[4..5]);
+        if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
+
+        const tag = @intToEnum(MessageId, itag);
 
         if (payload.len < 4 + len) return error.MalformedMessage;
 
@@ -189,7 +192,7 @@ pub const Peer = struct {
         // try self.sendPeerId();
         // try self.sendInterested();
 
-        var piece_index: u32 = 0;
+        var piece_index: u32 = 0x410;
         // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
         try self.requestPiece(piece_index);
 
