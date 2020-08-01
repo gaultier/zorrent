@@ -76,14 +76,25 @@ pub const Peer = struct {
     }
 
     pub fn sendInterested(self: *Peer) !void {
-        const msg = [_]u8{ 0, 0, 0, 1, 2 };
-        try self.socket.?.writeAll(msg[0..]); // interested
+        var msg: [5]u8 = undefined;
+
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
+        std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Interested));
+        try self.socket.?.writeAll(msg[0..]);
     }
 
-    pub fn sendPeerId(self: *Peer) !void {
-        const remote_peer_id = "\x00" ** 20;
-        try self.socket.?.writeAll(remote_peer_id[0..]);
+    pub fn sendChoke(self: *Peer) !void {
+        var msg: [5]u8 = undefined;
+
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
+        std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Choke));
+        try self.socket.?.writeAll(msg[0..]);
     }
+
+    // pub fn sendPeerId(self: *Peer) !void {
+    //     const remote_peer_id = "\x00" ** 20;
+    //     try self.socket.?.writeAll(remote_peer_id[0..]);
+    // }
 
     pub fn read(self: *Peer, response: *[1 << 14]u8) !usize {
         const len = self.socket.?.read(response.*[0..]) catch |err| {
@@ -121,8 +132,8 @@ pub const Peer = struct {
     pub fn parseMessage(self: *Peer, payload: []const u8) !Message { // FIXME
         if (payload.len < 5) return error.MalformedMessage;
 
-        std.debug.warn("{}\tParsing message: ", .{self.address});
-        hexDump(payload);
+        // std.debug.warn("{}\tParsing message: ", .{self.address});
+        // hexDump(payload);
 
         const len = std.mem.readIntSliceBig(u32, payload[0..4]);
         const itag = std.mem.readIntSliceBig(u8, payload[4..5]);
@@ -183,15 +194,16 @@ pub const Peer = struct {
         var response = try allocator.create([1 << 14]u8);
         defer allocator.destroy(response);
 
-        var len = try self.read(response);
-        if (isHandshake(response[0..len])) {
-            std.debug.warn("{}\tHandshaked\n", .{self.address});
-        } else {
+        var len: usize = 0;
+        while (!isHandshake(response[0..len])) {
+            len = try self.read(response);
             std.debug.warn("{}\tNot-handshake message: ", .{self.address});
-            hexDump(response);
+            hexDump(response[0..len]);
         }
+        std.debug.warn("{}\tHandshaked\n", .{self.address});
         // try self.sendPeerId();
         try self.sendInterested();
+        try self.sendChoke();
 
         var piece_index: u32 = 0x410;
         // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
