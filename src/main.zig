@@ -103,21 +103,25 @@ pub const Peer = struct {
 
         var payload: [17]u8 = undefined;
         const payload_len = 1 + 3 * 4;
-        std.mem.writeIntSliceBig(u32, payload[0..], payload_len);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
 
         const tag: u8 = @enumToInt(MessageId.Request);
-        var ptr = &payload[4];
-        std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &ptr), tag);
-        std.mem.writeIntSliceBig(u32, payload[5..], piece_index);
-        std.mem.writeIntSliceBig(u32, payload[9..], begin);
-        std.mem.writeIntSliceBig(u32, payload[13..], length);
+        std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), length);
 
         std.debug.warn("{}\tRequest piece #{}\n", .{ self.address, piece_index });
+        hexDump(payload[0..]);
         try self.socket.?.writeAll(&payload);
+        std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
     }
 
     pub fn parseMessage(self: *Peer, payload: []const u8) !Message { // FIXME
         if (payload.len < 5) return error.MalformedMessage;
+
+        std.debug.warn("{}\tParsing message: ", .{self.address});
+        hexDump(payload);
 
         const len = std.mem.readIntSliceBig(u32, payload[0..4]);
         const tag = @intToEnum(MessageId, std.mem.readIntSliceBig(u8, payload[4..5]));
@@ -179,28 +183,31 @@ pub const Peer = struct {
         if (isHandshake(response[0..len])) {
             std.debug.warn("{}\tHandshaked\n", .{self.address});
         } else {
-            std.debug.warn("{}\tUnknown message: ", .{self.address});
-            hexDump(response[0..len]);
+            std.debug.warn("{}\tNot-handshake message: ", .{self.address});
+            hexDump(response);
         }
-        try self.sendPeerId();
-        try self.sendInterested();
+        // try self.sendPeerId();
+        // try self.sendInterested();
 
         var piece_index: u32 = 0;
-        const pieces_len: usize = torrent_file.pieces.len / 20;
-        while (true) {
-            if (piece_index == 0) {
-                try self.requestPiece(piece_index);
-                piece_index += 1;
-            } else {
-                len = try self.read(response);
-                if (len > 0) {
-                    const msg = self.parseMessage(response[0..]) catch |err| {
-                        std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                        return err;
-                    };
+        // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
+        try self.requestPiece(piece_index);
 
-                    std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
-                }
+        // const pieces_len: usize = torrent_file.pieces.len / 20;
+        while (true) {
+            // if (piece_index == 0) {
+            //     try self.requestPiece(piece_index);
+            //     piece_index += 1;
+            // } else {
+            len = try self.read(response);
+            if (len > 0) {
+                const msg = self.parseMessage(response[0..]) catch |err| {
+                    std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
+                    return err;
+                };
+
+                std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+                // }
             }
         }
     }
