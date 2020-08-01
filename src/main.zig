@@ -199,6 +199,14 @@ pub const Peer = struct {
             len = try self.read(response);
             std.debug.warn("{}\tNot-handshake message: ", .{self.address});
             hexDump(response[0..len]);
+            const msg = self.parseMessage(response) catch |err| {
+                std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
+                std.time.sleep(1_000_000_000);
+                continue;
+            };
+            std.debug.warn("{}\n", .{msg});
+
+            std.time.sleep(1_000_000_000);
         }
         std.debug.warn("{}\tHandshaked\n", .{self.address});
         // try self.sendPeerId();
