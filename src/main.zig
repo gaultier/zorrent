@@ -124,54 +124,66 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), length);
 
         std.debug.warn("{}\tRequest piece #{}\n", .{ self.address, piece_index });
-        hexDump(payload[0..]);
+        // hexDump(payload[0..]);
         try self.socket.?.writeAll(payload[0..]);
         std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
     }
 
-    pub fn parseMessage(self: *Peer, payload: []const u8) !Message { // FIXME
+    pub fn parseMessage(self: *Peer, payload: []const u8, allocator: *std.mem.Allocator) ![]Message {
         if (payload.len < 5) return error.MalformedMessage;
 
         // std.debug.warn("{}\tParsing message: ", .{self.address});
         // hexDump(payload);
 
-        const len = std.mem.readIntSliceBig(u32, payload[0..4]);
-        const itag = std.mem.readIntSliceBig(u8, payload[4..5]);
-        if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
+        var parse_len = payload.len;
 
-        const tag = @intToEnum(MessageId, itag);
+        var messages = std.ArrayList(Message).init(allocator);
+        defer messages.deinit();
 
-        if (payload.len < 4 + len) return error.MalformedMessage;
+        while (parse_len > 0) {
+            const len = std.mem.readIntSliceBig(u32, payload[0..4]);
+            std.debug.warn("{}\tparse_len={} payload.len={} len={}\n", .{ self.address, parse_len, payload.len, len });
+            parse_len -= (4 + len);
+            const itag = std.mem.readIntSliceBig(u8, payload[4..5]);
+            if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
 
-        return switch (tag) {
-            .Choke => Message.Choke,
-            .Unchoke => Message.Unchoke,
-            .Interested => Message.Interested,
-            .Uninterested => Message.Uninterested,
-            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[4..]) },
-            .Bitfield => Message{ .Bitfield = payload[4..] },
-            .Request => Message{
-                .Request = [3]u32{
-                    std.mem.readIntSliceBig(u32, payload[4..]),
-                    std.mem.readIntSliceBig(u32, payload[8..]),
-                    std.mem.readIntSliceBig(u32, payload[12..]),
+            const tag = @intToEnum(MessageId, itag);
+
+            if (payload.len < 4 + len) return error.MalformedMessage;
+
+            const message: Message = switch (tag) {
+                .Choke => Message.Choke,
+                .Unchoke => Message.Unchoke,
+                .Interested => Message.Interested,
+                .Uninterested => Message.Uninterested,
+                .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[4..]) },
+                .Bitfield => Message{ .Bitfield = payload[4..] },
+                .Request => Message{
+                    .Request = [3]u32{
+                        std.mem.readIntSliceBig(u32, payload[4..]),
+                        std.mem.readIntSliceBig(u32, payload[8..]),
+                        std.mem.readIntSliceBig(u32, payload[12..]),
+                    },
                 },
-            },
-            .Piece => Message{
-                .Piece = [3]u32{
-                    std.mem.readIntSliceBig(u32, payload[4..]),
-                    std.mem.readIntSliceBig(u32, payload[8..]),
-                    std.mem.readIntSliceBig(u32, payload[12..]),
+                .Piece => Message{
+                    .Piece = [3]u32{
+                        std.mem.readIntSliceBig(u32, payload[4..]),
+                        std.mem.readIntSliceBig(u32, payload[8..]),
+                        std.mem.readIntSliceBig(u32, payload[12..]),
+                    },
                 },
-            },
-            .Cancel => Message{
-                .Cancel = [3]u32{
-                    std.mem.readIntSliceBig(u32, payload[4..]),
-                    std.mem.readIntSliceBig(u32, payload[8..]),
-                    std.mem.readIntSliceBig(u32, payload[12..]),
+                .Cancel => Message{
+                    .Cancel = [3]u32{
+                        std.mem.readIntSliceBig(u32, payload[4..]),
+                        std.mem.readIntSliceBig(u32, payload[8..]),
+                        std.mem.readIntSliceBig(u32, payload[12..]),
+                    },
                 },
-            },
-        };
+            };
+            try messages.append(message);
+        }
+
+        return messages.toOwnedSlice();
     }
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, allocator: *std.mem.Allocator) !void {
@@ -199,12 +211,6 @@ pub const Peer = struct {
             len = try self.read(response);
             std.debug.warn("{}\tNot-handshake message: ", .{self.address});
             hexDump(response[0..len]);
-            const msg = self.parseMessage(response) catch |err| {
-                std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                std.time.sleep(1_000_000_000);
-                continue;
-            };
-            std.debug.warn("{}\n", .{msg});
 
             std.time.sleep(1_000_000_000);
         }
@@ -225,12 +231,15 @@ pub const Peer = struct {
             // } else {
             len = try self.read(response);
             if (len > 0) {
-                const msg = self.parseMessage(response[0..]) catch |err| {
+                const msgs = self.parseMessage(response[0..len], allocator) catch |err| {
                     std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
                     return err;
                 };
+                defer allocator.destroy(&msgs);
 
-                std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+                for (msgs) |msg| {
+                    std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+                }
             } else {
                 std.debug.warn("{}\t.\n", .{self.address});
                 std.time.sleep(1_000_000_000);
@@ -410,25 +419,3 @@ pub const TorrentFile = struct {
         return peers.toOwnedSlice();
     }
 };
-
-fn main() anyerror!void {
-    try socket.writeAll(&[_]u8{ 0, 0, 0, 1, 1 }); // unchoke
-
-    // Unchoke
-    res = try socket.read(response[0..]);
-    std.debug.warn("res={} response=", .{res});
-    hexDump(response[0..res]);
-
-    // Piece 0
-    res = try socket.read(response[0..]);
-    std.debug.warn("res={} response=", .{res});
-    hexDump(response[0..res]);
-
-    res = try socket.read(response[0..]);
-    std.debug.warn("res={} response=", .{res});
-    hexDump(response[0..res]);
-
-    res = try socket.read(response[0..]);
-    std.debug.warn("res={} response=", .{res});
-    hexDump(response[0..res]);
-}
