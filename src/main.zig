@@ -50,6 +50,31 @@ pub const PeerState = enum {
     Down,
 };
 
+pub const RingBuffer = struct {
+    buffer: []u8,
+    start: usize,
+    end: usize,
+    allocator: *std.mem.Allocator,
+
+    fn init(size: usize, allocator: *std.mem.Allocator) !RingBuffer {
+        return RingBuffer{ .buffer = try allocator.alloc(u8, size), .start = 0, .end = 0 };
+    }
+
+    fn deinit(self: *RingBuffer) void {
+        self.allocator.free(self.buffer);
+    }
+
+    fn getAvailableMem(self: *RingBuffer, n: usize) []u8 {
+        const old_start = self.start;
+        const old_end = self.end;
+
+        self.end = (old_start + n) % self.buffer.len;
+        self.start = self.end;
+
+        return self.buffer[old_start..old_end];
+    }
+};
+
 fn isHandshake(buffer: []const u8) bool {
     return (buffer.len >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
 }
@@ -58,6 +83,7 @@ pub const Peer = struct {
     address: std.net.Address,
     state: PeerState,
     socket: ?std.fs.File,
+    recv_buffer: RingBuffer,
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
@@ -67,6 +93,7 @@ pub const Peer = struct {
         if (self.socket) |socket| {
             socket.close();
         }
+        self.recv_buffer.deinit();
     }
 
     pub fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
@@ -96,9 +123,8 @@ pub const Peer = struct {
     //     try self.socket.?.writeAll(remote_peer_id[0..]);
     // }
 
-    pub fn read(self: *Peer, response: *[1 << 14]u8) !usize {
-        const len = self.socket.?.read(response.*[0..]) catch |err| {
-            // defer self.deinit();
+    pub fn read(self: *Peer) !usize {
+        const len = self.socket.?.read(self.recv_buffer.getAvailableMem()) catch |err| {
             switch (err) {
                 error.ConnectionResetByPeer => {
                     return 0;
@@ -106,6 +132,7 @@ pub const Peer = struct {
                 else => return err,
             }
         };
+
         return len;
     }
 
@@ -409,7 +436,7 @@ pub const TorrentFile = struct {
 
             const address = std.net.Address.initIp4(ip, peer_port);
 
-            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null });
+            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = RingBuffer.init(1 << 16) });
 
             i += 6;
         }
