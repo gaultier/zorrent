@@ -50,31 +50,6 @@ pub const PeerState = enum {
     Down,
 };
 
-pub const RingBuffer = struct {
-    buffer: []u8,
-    start: usize,
-    end: usize,
-    allocator: *std.mem.Allocator,
-
-    fn init(size: usize, allocator: *std.mem.Allocator) !RingBuffer {
-        return RingBuffer{ .buffer = try allocator.alloc(u8, size), .start = 0, .end = 0 };
-    }
-
-    fn deinit(self: *RingBuffer) void {
-        self.allocator.free(self.buffer);
-    }
-
-    fn getAvailableMem(self: *RingBuffer, n: usize) []u8 {
-        const old_start = self.start;
-        const old_end = self.end;
-
-        self.end = (old_start + n) % self.buffer.len;
-        self.start = self.end;
-
-        return self.buffer[old_start..old_end];
-    }
-};
-
 fn isHandshake(buffer: []const u8) bool {
     return (buffer.len >= 19 and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
 }
@@ -83,7 +58,9 @@ pub const Peer = struct {
     address: std.net.Address,
     state: PeerState,
     socket: ?std.fs.File,
-    recv_buffer: RingBuffer,
+    recv_buffer: std.ArrayList(u8),
+    recv_start: usize,
+    recv_end: usize,
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
@@ -100,6 +77,7 @@ pub const Peer = struct {
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(hash_info[0..]);
+        try self.sendPeerId();
     }
 
     pub fn sendInterested(self: *Peer) !void {
@@ -118,13 +96,14 @@ pub const Peer = struct {
         try self.socket.?.writeAll(msg[0..]);
     }
 
-    // pub fn sendPeerId(self: *Peer) !void {
-    //     const remote_peer_id = "\x00" ** 20;
-    //     try self.socket.?.writeAll(remote_peer_id[0..]);
-    // }
+    pub fn sendPeerId(self: *Peer) !void {
+        const remote_peer_id = "\x00" ** 20;
+        try self.socket.?.writeAll(remote_peer_id[0..]);
+    }
 
     pub fn read(self: *Peer) !usize {
-        const len = self.socket.?.read(self.recv_buffer.getAvailableMem()) catch |err| {
+        const len = self.socket.?.read(self.recv_buffer.items[self.recv_end..]) catch |err| {
+            std.debug.warn("{}\t{}\n", .{ self.address, err });
             switch (err) {
                 error.ConnectionResetByPeer => {
                     return 0;
@@ -132,6 +111,9 @@ pub const Peer = struct {
                 else => return err,
             }
         };
+
+        std.debug.warn("{}\t{}\n", .{ self.address, len });
+        self.recv_end += len;
 
         return len;
     }
@@ -156,61 +138,70 @@ pub const Peer = struct {
         std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
     }
 
-    pub fn parseMessage(self: *Peer, response: [1 << 14]u8, allocator: *std.mem.Allocator) ![]Message {
+    pub fn parseMessage(self: *Peer) !?Message {
         // if (payload.len < 5) return error.MalformedMessage;
-
-        // std.debug.warn("{}\tParsing message: ", .{self.address});
         // hexDump(payload);
-        const len = self.read(response);
-        var parse_len = payload.len;
+        const read_len = self.read();
+        std.debug.warn("{}\tParsing message: start={} end={}\n", .{ self.address, self.recv_start, self.recv_end });
 
-        var messages = std.ArrayList(Message).init(allocator);
-        defer messages.deinit();
+        std.debug.assert(self.recv_start <= self.recv_end);
 
-        while (parse_len > 0) {
-            const len = std.mem.readIntSliceBig(u32, payload[0..4]);
-            std.debug.warn("{}\tparse_len={} payload.len={} len={}\n", .{ self.address, parse_len, payload.len, len });
-            parse_len -= (4 + len);
-            const itag = std.mem.readIntSliceBig(u8, payload[4..5]);
-            if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
+        if (self.recv_start == self.recv_end) return null;
 
-            const tag = @intToEnum(MessageId, itag);
+        const payload = self.recv_buffer.items;
+        const len = std.mem.readIntSliceBig(u32, payload[self.recv_start .. self.recv_start + 4]);
+        const itag = std.mem.readIntSliceBig(u8, payload[self.recv_start + 4 .. self.recv_start + 5]);
+        if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
 
-            if (payload.len < 4 + len) return error.MalformedMessage;
+        const tag = @intToEnum(MessageId, itag);
 
-            const message: Message = switch (tag) {
-                .Choke => Message.Choke,
-                .Unchoke => Message.Unchoke,
-                .Interested => Message.Interested,
-                .Uninterested => Message.Uninterested,
-                .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[4..]) },
-                .Bitfield => Message{ .Bitfield = payload[4..] },
-                .Request => Message{
+        self.recv_start += 5;
+        std.debug.assert(self.recv_start <= self.recv_end);
+
+        if (payload.len < 4 + len) return error.MalformedMessage;
+
+        return switch (tag) {
+            .Choke => Message.Choke,
+            .Unchoke => Message.Unchoke,
+            .Interested => Message.Interested,
+            .Uninterested => Message.Uninterested,
+            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[self.recv_start..]) },
+            .Bitfield => blk: {
+                self.recv_start += len - 5; // FIXME
+                break :blk Message{ .Bitfield = payload[self.recv_start - (len - 5) .. self.recv_end] };
+            },
+            .Request => blk: {
+                self.recv_start += 12;
+                break :blk Message{
                     .Request = [3]u32{
-                        std.mem.readIntSliceBig(u32, payload[4..]),
-                        std.mem.readIntSliceBig(u32, payload[8..]),
-                        std.mem.readIntSliceBig(u32, payload[12..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 4 ..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 8 ..]),
                     },
-                },
-                .Piece => Message{
+                };
+            },
+            .Piece => blk: {
+                self.recv_start += 12;
+                // TODO: read more
+                break :blk Message{
                     .Piece = [3]u32{
-                        std.mem.readIntSliceBig(u32, payload[4..]),
-                        std.mem.readIntSliceBig(u32, payload[8..]),
-                        std.mem.readIntSliceBig(u32, payload[12..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 4 ..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 8 ..]),
                     },
-                },
-                .Cancel => Message{
+                };
+            },
+            .Cancel => blk: {
+                self.recv_start += 12;
+                break :blk Message{
                     .Cancel = [3]u32{
-                        std.mem.readIntSliceBig(u32, payload[4..]),
-                        std.mem.readIntSliceBig(u32, payload[8..]),
-                        std.mem.readIntSliceBig(u32, payload[12..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 4 ..]),
+                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 8 ..]),
                     },
-                },
-            };
-            try messages.append(message);
-        }
-
-        return messages.toOwnedSlice();
+                };
+            },
+        };
     }
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, allocator: *std.mem.Allocator) !void {
@@ -230,19 +221,21 @@ pub const Peer = struct {
         std.debug.warn("{}\tHandshaking\n", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
-        var response = try allocator.create([1 << 14]u8);
-        defer allocator.destroy(response);
-
         var len: usize = 0;
-        while (!isHandshake(response[0..len])) {
-            len = try self.read(response);
-            std.debug.warn("{}\tNot-handshake message: ", .{self.address});
-            hexDump(response[0..len]);
-
+        while (!isHandshake(self.recv_buffer.items[self.recv_start..self.recv_end])) {
+            len = try self.read();
+            if (len > 0) {
+                std.debug.warn("{}\tNot-handshake message: ", .{self.address});
+                hexDump(self.recv_buffer.items[self.recv_start..self.recv_end]);
+            }
             std.time.sleep(1_000_000_000);
         }
         std.debug.warn("{}\tHandshaked\n", .{self.address});
-        // try self.sendPeerId();
+
+        // Ignore message before handshake
+        self.recv_start = 0;
+        self.recv_end = 0;
+
         try self.sendInterested();
         try self.sendChoke();
 
@@ -256,15 +249,13 @@ pub const Peer = struct {
             //     try self.requestPiece(piece_index);
             //     piece_index += 1;
             // } else {
-            len = try self.read(response);
             if (len > 0) {
-                const msgs = self.parseMessage(&response, allocator) catch |err| {
+                const message = self.parseMessage() catch |err| {
                     std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
                     return err;
                 };
-                defer allocator.destroy(&msgs);
 
-                for (msgs) |msg| {
+                if (message) |msg| {
                     std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
                 }
             } else {
@@ -436,7 +427,12 @@ pub const TorrentFile = struct {
 
             const address = std.net.Address.initIp4(ip, peer_port);
 
-            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = RingBuffer.init(1 << 16) });
+            var recv_buffer = std.ArrayList(u8).init(allocator);
+            try recv_buffer.ensureCapacity(1 << 16);
+            var j: usize = 0;
+            while (j < 1 << 16) : (j += 1) recv_buffer.addOneAssumeCapacity().* = undefined;
+
+            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .recv_start = 0, .recv_end = 0 });
 
             i += 6;
         }
