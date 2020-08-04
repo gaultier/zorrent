@@ -251,8 +251,17 @@ pub const Peer = struct {
                         const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
                         var actual_hash: [20]u8 = undefined;
                         std.crypto.Sha1.hash(piece.data.items[0..], actual_hash[0..]);
+                        const matching_hash = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
 
-                        std.debug.warn("{}\tpiece #{} actual_hash={} expected_hash={} eq={}\n", .{ self.address, piece.index, actual_hash, expected_hash, std.mem.eql(u8, expected_hash[0..20], actual_hash[0..20]) });
+                        std.debug.warn("{}\tpiece #{} actual_hash=", .{ self.address, piece.index });
+                        hexDump(actual_hash[0..20]);
+                        std.debug.warn("{}\tpiece #{} expected_hash=", .{ self.address, piece.index });
+                        hexDump(expected_hash[0..20]);
+                        std.debug.warn("{}\tpiece #{} matching_hash={}\n", .{
+                            self.address,
+                            piece.index,
+                            matching_hash,
+                        });
                     },
                     else => {},
                 }
