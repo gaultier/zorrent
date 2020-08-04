@@ -175,15 +175,16 @@ pub const Peer = struct {
                 },
             },
             .Piece => blk: {
-                var data = std.ArrayList(u8).init(self.allocator);
-                try data.appendSlice(recv_buffer[i + 8 ..]);
-                break :blk Message{
-                    .Piece = MessagePiece{
-                        .index = std.mem.readIntSliceBig(u32, recv_buffer[i + 0 ..]),
-                        .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
-                        .data = data,
-                    },
+                var piece = MessagePiece{
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[i + 0 ..]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
+                    .data = std.ArrayList(u8).init(self.allocator),
                 };
+                std.debug.warn("{}\tpiece_data=", .{self.address});
+                hexDump(recv_buffer[i + 8 ..]);
+                try piece.data.appendSlice(recv_buffer[i + 8 ..]);
+
+                break :blk Message{ .Piece = piece };
             },
             .Cancel => Message{
                 .Cancel = MessageCancel{
