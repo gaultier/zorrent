@@ -474,15 +474,17 @@ pub const TorrentFile = struct {
         return peers.toOwnedSlice();
     }
 
-    pub fn createMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
-        std.debug.warn("path={}\n", .{self.path});
+    pub fn openMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
+        std.debug.warn("path={} lengthBytesCount={}\n", .{ self.path, self.lengthBytesCount });
         const fd = try std.os.open(self.path, std.os.O_CREAT | std.os.O_RDWR, 438);
-        defer std.os.close(fd);
+        try std.os.ftruncate(fd, self.lengthBytesCount);
+        // FIXME
+        // defer std.os.close(fd);
         return try std.os.mmap(
             null,
             self.lengthBytesCount,
-            std.os.PROT_WRITE,
-            std.os.MAP_PRIVATE,
+            std.os.PROT_READ | std.os.PROT_WRITE,
+            std.os.MAP_FILE | std.os.MAP_PRIVATE,
             fd,
             0,
         );

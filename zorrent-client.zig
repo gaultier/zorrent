@@ -17,7 +17,9 @@ pub fn main() anyerror!void {
     defer frames.deinit();
     try frames.ensureCapacity(peers.len);
 
-    var file_buffer = try torrent_file.createMmapFile(); // TODO: deinit()
+    var file_buffer = try torrent_file.openMmapFile();
+    defer std.os.munmap(file_buffer);
+
     var file_mutex = std.Mutex.init();
     defer file_mutex.deinit();
 
