@@ -128,8 +128,8 @@ pub const Peer = struct {
         const length: u32 = 1 << 14;
         const begin = 0; //piece_index * length;
 
-        var payload: [17]u8 = undefined;
         const payload_len = 1 + 3 * 4;
+        var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
 
         const tag: u8 = @enumToInt(MessageId.Request);
@@ -139,14 +139,14 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), length);
 
         std.debug.warn("{}\tRequest piece #{}\n", .{ self.address, piece_index });
-        // hexDump(payload[0..]);
         try self.socket.?.writeAll(payload[0..]);
         std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
         var recv_buffer: [1 << 15]u8 = undefined;
-        _ = try self.socket.?.readAll(recv_buffer[0..4]);
+        var read_len = try self.socket.?.readAll(recv_buffer[0..4]);
+        if (read_len == 0) return null;
 
         const announced_len = std.mem.readIntSliceBig(u32, recv_buffer[0..4]);
         if (announced_len >= (1 << 15)) return error.AnnouncedLengthTooBig;
@@ -224,30 +224,23 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        var piece_index: u32 = 0x410;
+        var piece_index: u32 = 0;
         // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
-        try self.requestPiece(piece_index);
 
-        // const pieces_len: usize = torrent_file.pieces.len / 20;
+        const pieces_len: usize = torrent_file.pieces.len / 20;
         while (true) {
-            // if (piece_index == 0) {
-            //     try self.requestPiece(piece_index);
-            //     piece_index += 1;
-            // } else {
-            if (len > 0) {
-                const message = self.parseMessage() catch |err| {
-                    std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                    return err;
-                };
-
-                if (message) |msg| {
-                    std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
-                }
-            } else {
-                std.debug.warn("{}\t.\n", .{self.address});
-                std.time.sleep(1_000_000_000);
+            if (piece_index < pieces_len) {
+                try self.requestPiece(piece_index);
+                piece_index += 1;
             }
-            // }
+            const message = self.parseMessage() catch |err| {
+                std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
+                return err;
+            };
+
+            if (message) |msg| {
+                std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+            }
         }
     }
 };
