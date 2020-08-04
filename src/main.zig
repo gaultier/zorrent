@@ -143,9 +143,9 @@ pub const Peer = struct {
         const piece_len: u32 = 1 << 14;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), piece_len);
 
-        std.debug.warn("{}\tRequest piece #{}-{}\n", .{ self.address, piece_index, piece_begin });
+        std.debug.warn("{}\tRequest piece #{}_{}\n", .{ self.address, piece_index, piece_begin });
         try self.socket.?.writeAll(payload[0..]);
-        std.debug.warn("{}\tRequested piece #{}-{}\n", .{ self.address, piece_index, piece_begin });
+        std.debug.warn("{}\tRequested piece #{}_{}\n", .{ self.address, piece_index, piece_begin });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
