@@ -139,67 +139,65 @@ pub const Peer = struct {
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
-        // if (payload.len < 5) return error.MalformedMessage;
-        // hexDump(payload);
-        const read_len = self.read();
+        _ = try self.read();
         std.debug.warn("{}\tParsing message: start={} end={}\n", .{ self.address, self.recv_start, self.recv_end });
 
         std.debug.assert(self.recv_start <= self.recv_end);
 
         if (self.recv_start == self.recv_end) return null;
 
-        const payload = self.recv_buffer.items;
+        const payload = self.recv_buffer.items[self.recv_start..];
         const len = std.mem.readIntSliceBig(u32, payload[self.recv_start .. self.recv_start + 4]);
-        const itag = std.mem.readIntSliceBig(u8, payload[self.recv_start + 4 .. self.recv_start + 5]);
+        self.recv_start += 4;
+
+        std.debug.warn("{}\tParsing message: reading announced_len={}\n", .{ self.address, len });
+        // Read at least the announced length
+        {
+            var i: usize = 0;
+            while (i < len) {
+                std.debug.warn("{}\tParsing message: reading announced_len={} i={}\n", .{ self.address, len, i });
+                i += try self.read();
+            }
+        }
+        std.debug.warn("{}\tParsing message: read announced_len={}\n", .{ self.address, len });
+        var start = self.recv_start;
+        self.recv_start += len;
+        std.debug.assert(self.recv_start <= self.recv_end);
+
+        const itag = std.mem.readIntSliceBig(u8, payload[start .. start + 1]);
         if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
 
         const tag = @intToEnum(MessageId, itag);
 
-        self.recv_start += 5;
-        std.debug.assert(self.recv_start <= self.recv_end);
-
-        if (payload.len < 4 + len) return error.MalformedMessage;
+        start += 1;
 
         return switch (tag) {
             .Choke => Message.Choke,
             .Unchoke => Message.Unchoke,
             .Interested => Message.Interested,
             .Uninterested => Message.Uninterested,
-            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[self.recv_start..]) },
-            .Bitfield => blk: {
-                self.recv_start += len - 5; // FIXME
-                break :blk Message{ .Bitfield = payload[self.recv_start - (len - 5) .. self.recv_end] };
+            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, payload[start..]) },
+            .Bitfield => Message{ .Bitfield = payload[start..] },
+            .Request => Message{
+                .Request = [3]u32{
+                    std.mem.readIntSliceBig(u32, payload[start..]),
+                    std.mem.readIntSliceBig(u32, payload[start + 4 ..]),
+                    std.mem.readIntSliceBig(u32, payload[start + 8 ..]),
+                },
             },
-            .Request => blk: {
-                self.recv_start += 12;
-                break :blk Message{
-                    .Request = [3]u32{
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start..]),
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 4 ..]),
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 8 ..]),
-                    },
-                };
+            .Piece => Message{
+                .Piece = [3]u32{
+                    std.mem.readIntSliceBig(u32, payload[start..]),
+                    std.mem.readIntSliceBig(u32, payload[start + 4 ..]),
+                    std.mem.readIntSliceBig(u32, payload[start + 8 ..]),
+                },
             },
-            .Piece => blk: {
-                self.recv_start += 12;
-                // TODO: read more
-                break :blk Message{
-                    .Piece = [3]u32{
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start..]),
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 4 ..]),
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 8 ..]),
-                    },
-                };
-            },
-            .Cancel => blk: {
-                self.recv_start += 12;
-                break :blk Message{
-                    .Cancel = [3]u32{
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start..]),
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 4 ..]),
-                        std.mem.readIntSliceBig(u32, payload[self.recv_start + 8 ..]),
-                    },
-                };
+            .Cancel => Message{
+                .Cancel = [3]u32{
+                    std.mem.readIntSliceBig(u32, payload[start..]),
+                    std.mem.readIntSliceBig(u32, payload[start + 4 ..]),
+                    std.mem.readIntSliceBig(u32, payload[start + 8 ..]),
+                },
             },
         };
     }
