@@ -123,10 +123,15 @@ pub const Peer = struct {
         return len;
     }
 
-    pub fn requestPiece(self: *Peer, piece_index: u32) !void {
-        const length: u32 = 1 << 14;
-        const begin = 0; //piece_index * length;
+    pub fn requestFullPiece(self: *Peer, piece_index: u32, piece_len: u32) !void {
+        var begin: u32 = 0;
+        while (begin < piece_len) {
+            try self.requestFragmentOfPiece(piece_index, begin);
+            begin += 1 << 16;
+        }
+    }
 
+    pub fn requestFragmentOfPiece(self: *Peer, piece_index: u32, piece_begin: u32) !void {
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
@@ -134,12 +139,13 @@ pub const Peer = struct {
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
-        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
-        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), length);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), piece_begin);
+        const piece_len: u32 = 1 << 14;
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), piece_len);
 
-        std.debug.warn("{}\tRequest piece #{}\n", .{ self.address, piece_index });
+        std.debug.warn("{}\tRequest piece #{}-{}\n", .{ self.address, piece_index, piece_begin });
         try self.socket.?.writeAll(payload[0..]);
-        std.debug.warn("{}\tRequested piece #{}\n", .{ self.address, piece_index });
+        std.debug.warn("{}\tRequested piece #{}-{}\n", .{ self.address, piece_index, piece_begin });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
@@ -237,7 +243,7 @@ pub const Peer = struct {
         const pieces_len: usize = torrent_file.pieces.len / 20;
         while (true) {
             if (piece_index < pieces_len) {
-                try self.requestPiece(piece_index);
+                try self.requestFullPiece(piece_index, @intCast(u32, torrent_file.piece_len));
                 piece_index += 1;
             }
             const message = self.parseMessage() catch |err| {
