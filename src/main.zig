@@ -30,7 +30,7 @@ pub const MessageId = enum(u8) {
 };
 
 const MessageRequest = struct { index: u32, begin: u32, length: u32 };
-const MessagePiece = struct { index: u32, begin: u32, length: u32, data: std.ArrayList(u8) };
+const MessagePiece = struct { index: u32, begin: u32, data: std.ArrayList(u8) };
 const MessageCancel = struct { index: u32, begin: u32, length: u32 };
 
 pub const Message = union(MessageId) {
@@ -176,12 +176,12 @@ pub const Peer = struct {
             },
             .Piece => blk: {
                 var data = std.ArrayList(u8).init(self.allocator);
-                try data.appendSlice(recv_buffer[12..]);
+                try data.appendSlice(recv_buffer[8..]);
+                std.debug.warn("{}\t {} {} {} {}\n", .{ self.address, recv_buffer[0], recv_buffer[1], recv_buffer[2], recv_buffer[3] });
                 break :blk Message{
                     .Piece = MessagePiece{
                         .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
                         .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                        .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
                         .data = data,
                     },
                 };
@@ -249,6 +249,7 @@ pub const Peer = struct {
 
                 switch (msg) {
                     Message.Piece => |piece| {
+                        std.debug.warn("{}\t{} {}\n", .{ self.address, piece.index, torrent_file.pieces.len });
                         const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
                         var actual_hash: [20]u8 = undefined;
                         std.crypto.Sha1.hash(piece.data.items[0..], actual_hash[0..]);
