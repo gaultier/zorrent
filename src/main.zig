@@ -118,8 +118,6 @@ pub const Peer = struct {
             }
         };
 
-        std.debug.warn("{}\t{}\n", .{ self.address, len });
-
         try self.recv_buffer.appendSlice(payload[0..len]);
 
         return len;
@@ -153,7 +151,6 @@ pub const Peer = struct {
         const announced_len = std.mem.readIntSliceBig(u32, recv_buffer[0..4]);
         if (announced_len >= (1 << 15)) return error.AnnouncedLengthTooBig;
 
-        std.debug.warn("{}\tParsing message: reading announced_len={}\n", .{ self.address, announced_len });
         _ = try self.socket.?.readAll(recv_buffer[0..announced_len]);
         var i: usize = 0;
 
@@ -251,7 +248,6 @@ pub const Peer = struct {
 
                 switch (msg) {
                     Message.Piece => |piece| {
-                        std.debug.warn("{}\t{} {}\n", .{ self.address, piece.index, torrent_file.pieces.len });
                         const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
                         var actual_hash: [20]u8 = undefined;
                         std.crypto.Sha1.hash(piece.data.items[0..], actual_hash[0..]);
