@@ -139,7 +139,10 @@ pub const Peer = struct {
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
-        _ = try self.read();
+        self.recv_start = 0;
+        self.recv_end = 0;
+
+        _ = try self.read(4);
         std.debug.warn("{}\tParsing message: start={} end={}\n", .{ self.address, self.recv_start, self.recv_end });
 
         std.debug.assert(self.recv_start <= self.recv_end);
@@ -147,21 +150,21 @@ pub const Peer = struct {
         if (self.recv_start == self.recv_end) return null;
 
         const payload = self.recv_buffer.items[self.recv_start..];
-        const len = std.mem.readIntSliceBig(u32, payload[self.recv_start .. self.recv_start + 4]);
+        const announced_len = std.mem.readIntSliceBig(u32, payload[self.recv_start .. self.recv_start + 4]);
         self.recv_start += 4;
 
-        std.debug.warn("{}\tParsing message: reading announced_len={}\n", .{ self.address, len });
-        // Read at least the announced length
+        std.debug.warn("{}\tParsing message: reading announced_len={}\n", .{ self.address, announced_len });
+        // Read exactly the announced length
         {
             var i: usize = 0;
-            while (i < len) {
-                std.debug.warn("{}\tParsing message: reading announced_len={} i={}\n", .{ self.address, len, i });
-                i += try self.read();
+            while (i < announced_len) {
+                std.debug.warn("{}\tParsing message: reading announced_len={} i={}\n", .{ self.address, announced_len, i });
+                i += try self.read(announced_len - i);
             }
         }
-        std.debug.warn("{}\tParsing message: read announced_len={}\n", .{ self.address, len });
+        std.debug.warn("{}\tParsing message: read announced_len={}\n", .{ self.address, announced_len });
         var start = self.recv_start;
-        self.recv_start += len;
+        self.recv_start += announced_len;
         std.debug.assert(self.recv_start <= self.recv_end);
 
         const itag = std.mem.readIntSliceBig(u8, payload[start .. start + 1]);
