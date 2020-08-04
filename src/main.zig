@@ -256,24 +256,24 @@ pub const Peer = struct {
 
                 switch (msg) {
                     Message.Piece => |piece| {
-                        const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
-                        var actual_hash: [20]u8 = undefined;
-                        std.crypto.Sha1.hash(piece.data[0..], actual_hash[0..]);
-                        const matching_hash = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
+                        // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
+                        // var actual_hash: [20]u8 = undefined;
+                        // std.crypto.Sha1.hash(piece.data[0..], actual_hash[0..]);
+                        // const matching_hash = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
 
-                        std.debug.warn("{}\tpiece #{} data_len={} actual_hash=", .{
-                            self.address,
-                            piece.index,
-                            piece.data.len,
-                        });
-                        hexDump(actual_hash[0..20]);
-                        std.debug.warn("{}\tpiece #{} expected_hash=", .{ self.address, piece.index });
-                        hexDump(expected_hash[0..20]);
-                        std.debug.warn("{}\tpiece #{} matching_hash={}\n", .{
-                            self.address,
-                            piece.index,
-                            matching_hash,
-                        });
+                        // std.debug.warn("{}\tpiece #{} data_len={} actual_hash=", .{
+                        //     self.address,
+                        //     piece.index,
+                        //     piece.data.len,
+                        // });
+                        // hexDump(actual_hash[0..20]);
+                        // std.debug.warn("{}\tpiece #{} expected_hash=", .{ self.address, piece.index });
+                        // hexDump(expected_hash[0..20]);
+                        // std.debug.warn("{}\tpiece #{} matching_hash={}\n", .{
+                        //     self.address,
+                        //     piece.index,
+                        //     matching_hash,
+                        // });
                     },
                     else => {},
                 }
