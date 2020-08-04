@@ -30,7 +30,7 @@ pub const MessageId = enum(u8) {
 };
 
 const MessageRequest = struct { index: u32, begin: u32, length: u32 };
-const MessagePiece = struct { index: u32, begin: u32, data: std.ArrayList(u8) };
+const MessagePiece = struct { index: u32, begin: u32, data: []const u8 };
 const MessageCancel = struct { index: u32, begin: u32, length: u32 };
 
 pub const Message = union(MessageId) {
@@ -149,7 +149,7 @@ pub const Peer = struct {
         if (read_len == 0) return null;
 
         const announced_len = std.mem.readIntSliceBig(u32, recv_buffer[0..4]);
-        if (announced_len >= (1 << 15)) return error.AnnouncedLengthTooBig;
+        if (announced_len > (1 << 14 + 9)) return error.AnnouncedLengthTooBig;
 
         _ = try self.socket.?.readAll(recv_buffer[4 .. announced_len + 4]);
 
@@ -173,14 +173,19 @@ pub const Peer = struct {
                 },
             },
             .Piece => blk: {
-                var piece = MessagePiece{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[5..9]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[9..13]),
-                    .data = std.ArrayList(u8).init(self.allocator),
-                };
-                try piece.data.appendSlice(recv_buffer[13 .. 4 + announced_len]);
+                var data = std.ArrayList(u8).init(self.allocator);
+                try data.appendSlice(recv_buffer[13 .. 4 + announced_len]);
+                defer data.deinit();
 
-                break :blk Message{ .Piece = piece };
+                std.debug.warn("{}\tpiece #{} announced_len={} data_len={}\n", .{ self.address, std.mem.readIntSliceBig(u32, recv_buffer[5..9]), announced_len, data.items.len });
+
+                break :blk Message{
+                    .Piece = MessagePiece{
+                        .index = std.mem.readIntSliceBig(u32, recv_buffer[5..9]),
+                        .begin = std.mem.readIntSliceBig(u32, recv_buffer[9..13]),
+                        .data = data.toOwnedSlice(),
+                    },
+                };
             },
             .Cancel => Message{
                 .Cancel = MessageCancel{
@@ -247,10 +252,14 @@ pub const Peer = struct {
                     Message.Piece => |piece| {
                         const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
                         var actual_hash: [20]u8 = undefined;
-                        std.crypto.Sha1.hash(piece.data.items[0..], actual_hash[0..]);
+                        std.crypto.Sha1.hash(piece.data[0..], actual_hash[0..]);
                         const matching_hash = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
 
-                        std.debug.warn("{}\tpiece #{} actual_hash=", .{ self.address, piece.index });
+                        std.debug.warn("{}\tpiece #{} data_len={} actual_hash=", .{
+                            self.address,
+                            piece.index,
+                            piece.data.len,
+                        });
                         hexDump(actual_hash[0..20]);
                         std.debug.warn("{}\tpiece #{} expected_hash=", .{ self.address, piece.index });
                         hexDump(expected_hash[0..20]);
