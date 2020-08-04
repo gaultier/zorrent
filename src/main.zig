@@ -151,11 +151,9 @@ pub const Peer = struct {
         const announced_len = std.mem.readIntSliceBig(u32, recv_buffer[0..4]);
         if (announced_len >= (1 << 15)) return error.AnnouncedLengthTooBig;
 
-        _ = try self.socket.?.readAll(recv_buffer[0..announced_len]);
-        var i: usize = 0;
+        _ = try self.socket.?.readAll(recv_buffer[4 .. announced_len + 4]);
 
-        const itag = std.mem.readIntSliceBig(u8, recv_buffer[i .. i + 1]);
-        i += 1;
+        const itag = std.mem.readIntSliceBig(u8, recv_buffer[4..5]);
         if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
 
         const tag = @intToEnum(MessageId, itag);
@@ -165,32 +163,30 @@ pub const Peer = struct {
             .Unchoke => Message.Unchoke,
             .Interested => Message.Interested,
             .Uninterested => Message.Uninterested,
-            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, recv_buffer[i..]) },
-            .Bitfield => Message{ .Bitfield = recv_buffer[i..] },
+            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, recv_buffer[5..9]) },
+            .Bitfield => Message{ .Bitfield = recv_buffer[5..] }, // FIXME:segfault
             .Request => Message{
                 .Request = MessageRequest{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[i..]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
-                    .length = std.mem.readIntSliceBig(u32, recv_buffer[i + 8 ..]),
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[5..9]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[9..13]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[13..17]),
                 },
             },
             .Piece => blk: {
                 var piece = MessagePiece{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[i + 0 ..]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[5..9]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[9..13]),
                     .data = std.ArrayList(u8).init(self.allocator),
                 };
-                std.debug.warn("{}\tpiece_data=", .{self.address});
-                hexDump(recv_buffer[i + 8 ..]);
-                try piece.data.appendSlice(recv_buffer[i + 8 ..]);
+                try piece.data.appendSlice(recv_buffer[13 .. 4 + announced_len]);
 
                 break :blk Message{ .Piece = piece };
             },
             .Cancel => Message{
                 .Cancel = MessageCancel{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[i + 0 ..]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
-                    .length = std.mem.readIntSliceBig(u32, recv_buffer[i + 8 ..]),
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[5..9]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[9..13]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[13..17]),
                 },
             },
         };
