@@ -323,9 +323,22 @@ pub const TorrentFile = struct {
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
         const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
-        const file_path = (bencode.mapLookup(&field_info.Object, "name") orelse return error.FieldNotFound).String;
+
+        var file_path: ?[]const u8 = null;
+        var info_name_field: ?*bencode.Value = bencode.mapLookup(&field_info.Object, "name");
+        if (info_name_field) |field| {
+            file_path = field.String;
+        }
+
+        // FIXME
+        if (file_path == null) {
+            if (bencode.mapLookup(&field_info.Object, "files")) |field| {
+                if (field.Array.items.len > 0) file_path = field.Array.items[0].String;
+            }
+        }
+
         var owned_file_path = std.ArrayList(u8).init(allocator);
-        try owned_file_path.appendSlice(file_path);
+        try owned_file_path.appendSlice(file_path.?);
 
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
         defer field_info_bencoded.deinit();
@@ -351,7 +364,8 @@ pub const TorrentFile = struct {
         var query = std.ArrayList(u8).init(allocator);
         defer query.deinit();
 
-        try query.appendSlice("OpenBSD.somedomain.net:6969/announce?info_hash=");
+        try query.appendSlice(self.announce);
+        try query.appendSlice("?info_hash=");
 
         for (self.hash_info) |byte| {
             try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
