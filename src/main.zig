@@ -291,6 +291,7 @@ pub const TorrentFile = struct {
     leftBytesCount: usize,
     pieces: []const u8,
     piece_len: usize,
+    path: []const u8,
 
     pub fn parse(path: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
         // TODO: decide if we copy the memory from the ValueTree, or if we keep a reference to it
@@ -312,6 +313,9 @@ pub const TorrentFile = struct {
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
         const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
+        const file_path = (bencode.mapLookup(&field_info.Object, "name") orelse return error.FieldNotFound).String;
+        var owned_file_path = std.ArrayList(u8).init(allocator);
+        try owned_file_path.appendSlice(file_path);
 
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
         defer field_info_bencoded.deinit();
@@ -329,6 +333,7 @@ pub const TorrentFile = struct {
             .leftBytesCount = @intCast(usize, length),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
+            .path = owned_file_path.toOwnedSlice(),
         };
     }
 
@@ -457,5 +462,18 @@ pub const TorrentFile = struct {
         std.debug.assert(peers.items.len > 0);
 
         return peers.toOwnedSlice();
+    }
+
+    pub fn createMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
+        const fd = try os.open(self.path, 0, os.O_WR_ONLY);
+        defer os.close(fd);
+        return try std.os.mmap(
+            null,
+            self.lengthBytesCount,
+            os.PROT_WRITE,
+            os.MAP_PRIVATE,
+            fd,
+            0,
+        );
     }
 };
