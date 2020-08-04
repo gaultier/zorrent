@@ -29,6 +29,10 @@ pub const MessageId = enum(u8) {
     Cancel = 8,
 };
 
+const MessageRequest = struct { index: u32, begin: u32, length: u32 };
+const MessagePiece = struct { index: u32, begin: u32, length: u32 };
+const MessageCancel = struct { index: u32, begin: u32, length: u32 };
+
 pub const Message = union(MessageId) {
     Choke: void,
     Unchoke: void,
@@ -36,9 +40,9 @@ pub const Message = union(MessageId) {
     Uninterested: void,
     Bitfield: []const u8,
     Have: u32,
-    Request: [3]u32,
-    Cancel: [3]u32,
-    Piece: [3]u32,
+    Request: MessageRequest,
+    Cancel: MessageCancel,
+    Piece: MessagePiece,
 };
 
 pub const PeerState = enum {
@@ -163,24 +167,24 @@ pub const Peer = struct {
             .Have => Message{ .Have = std.mem.readIntSliceBig(u32, recv_buffer[0..]) },
             .Bitfield => Message{ .Bitfield = recv_buffer[0..] },
             .Request => Message{
-                .Request = [3]u32{
-                    std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                    std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                    std.mem.readIntSliceBig(u32, recv_buffer[8..]),
+                .Request = MessageRequest{
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
                 },
             },
             .Piece => Message{
-                .Piece = [3]u32{
-                    std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                    std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                    std.mem.readIntSliceBig(u32, recv_buffer[8..]),
+                .Piece = MessagePiece{
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
                 },
             },
             .Cancel => Message{
-                .Cancel = [3]u32{
-                    std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                    std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                    std.mem.readIntSliceBig(u32, recv_buffer[8..]),
+                .Cancel = MessageCancel{
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
                 },
             },
         };
