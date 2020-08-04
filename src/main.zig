@@ -203,7 +203,7 @@ pub const Peer = struct {
         };
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, file_mutex: *std.Mutex) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
@@ -256,6 +256,16 @@ pub const Peer = struct {
 
                 switch (msg) {
                     Message.Piece => |piece| {
+                        const n = piece.data.len;
+                        const start = piece.index * (1 << 14) + piece.begin; // FIXME
+                        std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
+                        while (true) {
+                            if (file_mutex.tryAcquire()) |lock| {
+                                defer lock.release();
+                                std.mem.copy(u8, file_buffer[0..], piece.data[0..]);
+                                break;
+                            }
+                        }
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
                         // var actual_hash: [20]u8 = undefined;
                         // std.crypto.Sha1.hash(piece.data[0..], actual_hash[0..]);
@@ -465,13 +475,14 @@ pub const TorrentFile = struct {
     }
 
     pub fn createMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
-        const fd = try os.open(self.path, 0, os.O_WR_ONLY);
-        defer os.close(fd);
+        std.debug.warn("path={}\n", .{self.path});
+        const fd = try std.os.open(self.path, std.os.O_CREAT | std.os.O_RDWR, 438);
+        defer std.os.close(fd);
         return try std.os.mmap(
             null,
             self.lengthBytesCount,
-            os.PROT_WRITE,
-            os.MAP_PRIVATE,
+            std.os.PROT_WRITE,
+            std.os.MAP_PRIVATE,
             fd,
             0,
         );

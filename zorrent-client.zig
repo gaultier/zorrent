@@ -17,9 +17,14 @@ pub fn main() anyerror!void {
     defer frames.deinit();
     try frames.ensureCapacity(peers.len);
 
+    var file_buffer = try torrent_file.createMmapFile(); // TODO: deinit()
+    var file_mutex = std.Mutex.init();
+    defer file_mutex.deinit();
+
     for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file);
+        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, file_buffer, &file_mutex);
     }
+
     for (frames.items) |*frame| {
         _ = try await frame;
     }
