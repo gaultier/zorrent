@@ -30,7 +30,7 @@ pub const MessageId = enum(u8) {
 };
 
 const MessageRequest = struct { index: u32, begin: u32, length: u32 };
-const MessagePiece = struct { index: u32, begin: u32, length: u32 };
+const MessagePiece = struct { index: u32, begin: u32, length: u32, data: std.ArrayList(u8) };
 const MessageCancel = struct { index: u32, begin: u32, length: u32 };
 
 pub const Message = union(MessageId) {
@@ -63,6 +63,7 @@ pub const Peer = struct {
     state: PeerState,
     socket: ?std.fs.File,
     recv_buffer: std.ArrayList(u8),
+    allocator: *std.mem.Allocator,
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
@@ -173,12 +174,17 @@ pub const Peer = struct {
                     .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
                 },
             },
-            .Piece => Message{
-                .Piece = MessagePiece{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                    .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
-                },
+            .Piece => blk: {
+                var data = std.ArrayList(u8).init(self.allocator);
+                try data.appendSlice(recv_buffer[12..]);
+                break :blk Message{
+                    .Piece = MessagePiece{
+                        .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
+                        .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
+                        .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
+                        .data = data,
+                    },
+                };
             },
             .Cancel => Message{
                 .Cancel = MessageCancel{
@@ -190,7 +196,7 @@ pub const Peer = struct {
         };
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, allocator: *std.mem.Allocator) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
@@ -240,6 +246,17 @@ pub const Peer = struct {
 
             if (message) |msg| {
                 std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+
+                switch (msg) {
+                    Message.Piece => |piece| {
+                        const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
+                        var actual_hash: [20]u8 = undefined;
+                        std.crypto.Sha1.hash(piece.data.items[0..], actual_hash[0..]);
+
+                        std.debug.warn("{}\tpiece #{} actual_hash={} expected_hash={} eq={}\n", .{ self.address, piece.index, actual_hash, expected_hash, std.mem.eql(u8, expected_hash[0..20], actual_hash[0..20]) });
+                    },
+                    else => {},
+                }
             }
         }
     }
@@ -408,7 +425,7 @@ pub const TorrentFile = struct {
             var recv_buffer = std.ArrayList(u8).init(allocator);
             try recv_buffer.ensureCapacity(1 << 16);
 
-            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer });
+            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
 
             i += 6;
         }
