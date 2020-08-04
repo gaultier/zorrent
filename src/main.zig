@@ -278,6 +278,7 @@ pub const TorrentFile = struct {
     piece_len: usize,
 
     pub fn parse(path: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
+        // TODO: decide if we copy the memory from the ValueTree, or if we keep a reference to it
         var file = try std.fs.cwd().openFile(path, std.fs.File.OpenFlags{ .read = true });
         defer file.close();
 
@@ -290,6 +291,9 @@ pub const TorrentFile = struct {
 
         const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
         const pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
+        var owned_pieces = std.ArrayList(u8).init(allocator);
+        try owned_pieces.appendSlice(pieces);
+
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
         const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
@@ -309,7 +313,7 @@ pub const TorrentFile = struct {
             .downloadedBytesCount = 0,
             .leftBytesCount = @intCast(usize, length),
             .piece_len = @intCast(usize, piece_len),
-            .pieces = pieces,
+            .pieces = owned_pieces.toOwnedSlice(),
         };
     }
 
