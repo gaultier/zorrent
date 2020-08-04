@@ -3,7 +3,7 @@ const std = @import("std");
 pub const io_mode = .evented;
 
 pub fn main() anyerror!void {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     const allocator = &arena.allocator;
 
     var args = try std.process.argsAlloc(allocator);
