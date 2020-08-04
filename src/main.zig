@@ -146,6 +146,7 @@ pub const Peer = struct {
 
     pub fn parseMessage(self: *Peer) !?Message {
         var recv_buffer: [1 << 15]u8 = undefined;
+
         var read_len = try self.socket.?.readAll(recv_buffer[0..4]);
         if (read_len == 0) return null;
 
@@ -154,8 +155,10 @@ pub const Peer = struct {
 
         std.debug.warn("{}\tParsing message: reading announced_len={}\n", .{ self.address, announced_len });
         _ = try self.socket.?.readAll(recv_buffer[0..announced_len]);
+        var i: usize = 0;
 
-        const itag = std.mem.readIntSliceBig(u8, recv_buffer[0..1]);
+        const itag = std.mem.readIntSliceBig(u8, recv_buffer[i .. i + 1]);
+        i += 1;
         if (itag > @enumToInt(MessageId.Cancel)) return error.MalformedMessage;
 
         const tag = @intToEnum(MessageId, itag);
@@ -165,32 +168,31 @@ pub const Peer = struct {
             .Unchoke => Message.Unchoke,
             .Interested => Message.Interested,
             .Uninterested => Message.Uninterested,
-            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, recv_buffer[0..]) },
-            .Bitfield => Message{ .Bitfield = recv_buffer[0..] },
+            .Have => Message{ .Have = std.mem.readIntSliceBig(u32, recv_buffer[i..]) },
+            .Bitfield => Message{ .Bitfield = recv_buffer[i..] },
             .Request => Message{
                 .Request = MessageRequest{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                    .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[i..]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[i + 8 ..]),
                 },
             },
             .Piece => blk: {
                 var data = std.ArrayList(u8).init(self.allocator);
-                try data.appendSlice(recv_buffer[8..]);
-                std.debug.warn("{}\t {} {} {} {}\n", .{ self.address, recv_buffer[0], recv_buffer[1], recv_buffer[2], recv_buffer[3] });
+                try data.appendSlice(recv_buffer[i + 8 ..]);
                 break :blk Message{
                     .Piece = MessagePiece{
-                        .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                        .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
+                        .index = std.mem.readIntSliceBig(u32, recv_buffer[i + 0 ..]),
+                        .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
                         .data = data,
                     },
                 };
             },
             .Cancel => Message{
                 .Cancel = MessageCancel{
-                    .index = std.mem.readIntSliceBig(u32, recv_buffer[0..]),
-                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[4..]),
-                    .length = std.mem.readIntSliceBig(u32, recv_buffer[8..]),
+                    .index = std.mem.readIntSliceBig(u32, recv_buffer[i + 0 ..]),
+                    .begin = std.mem.readIntSliceBig(u32, recv_buffer[i + 4 ..]),
+                    .length = std.mem.readIntSliceBig(u32, recv_buffer[i + 8 ..]),
                 },
             },
         };
@@ -245,7 +247,7 @@ pub const Peer = struct {
             };
 
             if (message) |msg| {
-                std.debug.warn("{}\tMessage: {}\n", .{ self.address, msg });
+                std.debug.warn("{}\tMessage: {}\n", .{ self.address, @tagName(msg) });
 
                 switch (msg) {
                     Message.Piece => |piece| {
