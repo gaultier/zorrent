@@ -293,7 +293,7 @@ pub const Peer = struct {
 };
 
 pub const TorrentFile = struct {
-    announce: []const u8,
+    announce_urls: [][]const u8,
     lengthBytesCount: usize,
     hash_info: [20]u8,
     downloadedBytesCount: usize,
@@ -313,7 +313,24 @@ pub const TorrentFile = struct {
         var value = try bencode.ValueTree.parse(content, allocator);
         defer value.deinit();
 
-        const announce = (bencode.mapLookup(&value.root.Object, "announce") orelse return error.FieldNotFound).String;
+        var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
+        if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
+            try owned_announce_urls.append(try allocator.dupe(u8, field.String));
+        }
+
+        if (bencode.mapLookup(&value.root.Object, "announce-list")) |field| {
+            const urls = field.Array.items;
+            for (urls) |url| {
+                const real_url = url.Array.items;
+
+                if (real_url.len == 1) {
+                    const real_real_url = real_url[0].String;
+                    if (real_real_url.len >= 6 and std.mem.eql(u8, real_real_url[0..7], "http://")) {
+                        try owned_announce_urls.append(try allocator.dupe(u8, real_real_url));
+                    }
+                }
+            }
+        }
 
         const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
         const pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
@@ -343,9 +360,6 @@ pub const TorrentFile = struct {
         var owned_file_path = std.ArrayList(u8).init(allocator);
         try owned_file_path.appendSlice(file_path.?);
 
-        var owned_announce = std.ArrayList(u8).init(allocator);
-        try owned_announce.appendSlice(announce);
-
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
         defer field_info_bencoded.deinit();
         try field_info.stringifyValue(field_info_bencoded.writer());
@@ -354,7 +368,7 @@ pub const TorrentFile = struct {
         std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
 
         return TorrentFile{
-            .announce = owned_announce.toOwnedSlice(),
+            .announce_urls = owned_announce_urls.toOwnedSlice(),
             .lengthBytesCount = @intCast(usize, file_length.?),
             .hash_info = hash,
             .uploadedBytesCount = 0,
@@ -366,11 +380,11 @@ pub const TorrentFile = struct {
         };
     }
 
-    fn buildAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) ![]const u8 {
+    fn buildAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
         var query = std.ArrayList(u8).init(allocator);
         defer query.deinit();
 
-        try query.appendSlice(self.announce);
+        try query.appendSlice(url);
         try query.appendSlice("?info_hash=");
 
         for (self.hash_info) |byte| {
@@ -402,11 +416,9 @@ pub const TorrentFile = struct {
         return query.toOwnedSlice();
     }
 
-    fn queryAnnounceUrl(self: TorrentFile, allocator: *std.mem.Allocator) !bencode.ValueTree {
-        var queryUrl = try self.buildAnnounceUrl(allocator);
+    fn queryAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
+        var queryUrl = try self.buildAnnounceUrl(url, allocator);
         defer allocator.destroy(&queryUrl);
-
-        std.debug.warn("queryUrl=`{}`\n", .{queryUrl}); // TODO: rm
 
         var curl_res: c.CURLcode = undefined;
         curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
@@ -457,8 +469,17 @@ pub const TorrentFile = struct {
     }
 
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
-        const tracker_response = try self.queryAnnounceUrl(allocator);
-        var dict = tracker_response.root.Object;
+        var tracker_response: ?bencode.ValueTree = null;
+        for (self.announce_urls) |url| {
+            tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
+                std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
+                continue;
+            };
+            break;
+        }
+        if (tracker_response == null) return error.NoTrackerAvailable;
+
+        var dict = tracker_response.?.root.Object;
         // TODO: support non compact format i.e. a list of strings
         const peers_compact = bencode.mapLookup(&dict, "peers").?.String;
 
