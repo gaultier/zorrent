@@ -489,6 +489,7 @@ pub const TorrentFile = struct {
                 std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
                 continue;
             };
+            std.debug.warn("Tracker {} replied successfuly\n", .{url});
             break;
         }
         if (tracker_response == null) return error.NoTrackerAvailable;
