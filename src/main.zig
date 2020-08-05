@@ -503,7 +503,7 @@ pub const TorrentFile = struct {
             switch (peers_field.?.*) {
                 .String => |peers_compact| {
                     if (peers_compact.len == 0) continue;
-                    std.debug.warn("peers: {}\n", .{peers_compact});
+                    std.debug.warn("peers count: {}\n", .{peers_compact.len});
 
                     std.debug.assert(peers_compact.len % 6 == 0);
 
