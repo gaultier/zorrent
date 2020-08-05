@@ -322,23 +322,29 @@ pub const TorrentFile = struct {
 
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
-        const length = (bencode.mapLookup(&field_info.Object, "length") orelse return error.FieldNotFound).Integer;
-
         var file_path: ?[]const u8 = null;
-        var info_name_field: ?*bencode.Value = bencode.mapLookup(&field_info.Object, "name");
-        if (info_name_field) |field| {
+        var file_length: ?isize = null;
+        if (bencode.mapLookup(&field_info.Object, "name")) |field| {
             file_path = field.String;
         }
+        if (bencode.mapLookup(&field_info.Object, "length")) |field| {
+            file_length = field.Integer;
+        }
 
-        // FIXME
-        if (file_path == null) {
-            if (bencode.mapLookup(&field_info.Object, "files")) |field| {
-                if (field.Array.items.len > 0) file_path = field.Array.items[0].String;
+        if (bencode.mapLookup(&field_info.Object, "files")) |field| {
+            // FIXME
+            if (field.Array.items.len > 0) {
+                var file_field = field.Array.items[0].Object;
+                file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
+                file_length = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
             }
         }
 
         var owned_file_path = std.ArrayList(u8).init(allocator);
         try owned_file_path.appendSlice(file_path.?);
+
+        var owned_announce = std.ArrayList(u8).init(allocator);
+        try owned_announce.appendSlice(announce);
 
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
         defer field_info_bencoded.deinit();
@@ -348,12 +354,12 @@ pub const TorrentFile = struct {
         std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
 
         return TorrentFile{
-            .announce = announce,
-            .lengthBytesCount = @intCast(usize, length),
+            .announce = owned_announce.toOwnedSlice(),
+            .lengthBytesCount = @intCast(usize, file_length.?),
             .hash_info = hash,
             .uploadedBytesCount = 0,
             .downloadedBytesCount = 0,
-            .leftBytesCount = @intCast(usize, length),
+            .leftBytesCount = @intCast(usize, file_length.?),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
             .path = owned_file_path.toOwnedSlice(),
