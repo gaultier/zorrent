@@ -450,7 +450,7 @@ pub const TorrentFile = struct {
             return error.CurlSetOptFailed;
         }
 
-        const timeout_seconds: usize = 20;
+        const timeout_seconds: usize = 10;
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_TIMEOUT, timeout_seconds);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
@@ -490,44 +490,53 @@ pub const TorrentFile = struct {
                 continue;
             };
             std.debug.warn("Tracker {} replied successfuly\n", .{url});
-            break;
+
+            var dict = tracker_response.?.root.Object;
+
+            // TODO: support non compact format i.e. a list of strings
+            const peers_field = bencode.mapLookup(&dict, "peers");
+            if (peers_field == null) continue;
+
+            switch (peers_field.?.*) {
+                .String => |peers_compact| {
+                    if (peers_compact.len == 0) continue;
+                    std.debug.warn("peers: {}\n", .{peers_compact});
+
+                    std.debug.assert(peers_compact.len % 6 == 0);
+
+                    var i: usize = 0;
+                    var peers = std.ArrayList(Peer).init(allocator);
+                    defer peers.deinit();
+
+                    while (i < peers_compact.len) {
+                        const ip = [4]u8{
+                            peers_compact[i],
+                            peers_compact[i + 1],
+                            peers_compact[i + 2],
+                            peers_compact[i + 3],
+                        };
+
+                        const peer_port_s = [2]u8{ peers_compact[i + 4], peers_compact[i + 5] };
+                        const peer_port = std.mem.readIntBig(u16, &peer_port_s);
+
+                        const address = std.net.Address.initIp4(ip, peer_port);
+
+                        var recv_buffer = std.ArrayList(u8).init(allocator);
+                        try recv_buffer.ensureCapacity(1 << 16);
+
+                        try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
+
+                        i += 6;
+                    }
+
+                    std.debug.assert(peers.items.len > 0);
+
+                    return peers.toOwnedSlice();
+                },
+                else => continue, // FIXME: support Object (non compact)
+            }
         }
-        if (tracker_response == null) return error.NoTrackerAvailable;
-
-        var dict = tracker_response.?.root.Object;
-        // TODO: support non compact format i.e. a list of strings
-        const peers_compact = bencode.mapLookup(&dict, "peers").?.String;
-
-        std.debug.assert(peers_compact.len % 6 == 0);
-
-        var i: usize = 0;
-        var peers = std.ArrayList(Peer).init(allocator);
-        defer peers.deinit();
-
-        while (i < peers_compact.len) {
-            const ip = [4]u8{
-                peers_compact[i],
-                peers_compact[i + 1],
-                peers_compact[i + 2],
-                peers_compact[i + 3],
-            };
-
-            const peer_port_s = [2]u8{ peers_compact[i + 4], peers_compact[i + 5] };
-            const peer_port = std.mem.readIntBig(u16, &peer_port_s);
-
-            const address = std.net.Address.initIp4(ip, peer_port);
-
-            var recv_buffer = std.ArrayList(u8).init(allocator);
-            try recv_buffer.ensureCapacity(1 << 16);
-
-            try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
-
-            i += 6;
-        }
-
-        std.debug.assert(peers.items.len > 0);
-
-        return peers.toOwnedSlice();
+        return error.NoTrackerAvailable;
     }
 
     pub fn openMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
