@@ -499,16 +499,17 @@ pub const TorrentFile = struct {
             // TODO: support non compact format i.e. a list of strings
             const peers_field = bencode.mapLookup(&dict, "peers");
             if (peers_field == null) {
-                std.debug.warn("Tracker {} sent empty peers list, skipping\n", .{url});
+                std.debug.warn("Tracker {}: sent empty peers list, skipping\n", .{url});
                 continue;
             }
 
             switch (peers_field.?.*) {
                 .String => |peers_compact| {
                     if (peers_compact.len == 0) continue;
-                    std.debug.warn("peers count: {}\n", .{peers_compact.len});
-
-                    std.debug.assert(peers_compact.len % 6 == 0);
+                    if (peers_compact.len % 6 != 0) {
+                        std.debug.warn("Tracker {}: invalid peers received, skipping\n", .{url});
+                    }
+                    std.debug.warn("peers count: {}\n", .{peers_compact.len / 6});
 
                     var i: usize = 0;
 
