@@ -483,7 +483,10 @@ pub const TorrentFile = struct {
     }
 
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
+        var peers = std.ArrayList(Peer).init(allocator);
+        defer peers.deinit();
         var tracker_response: ?bencode.ValueTree = null;
+
         for (self.announce_urls) |url| {
             tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
                 std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
@@ -508,8 +511,6 @@ pub const TorrentFile = struct {
                     std.debug.assert(peers_compact.len % 6 == 0);
 
                     var i: usize = 0;
-                    var peers = std.ArrayList(Peer).init(allocator);
-                    defer peers.deinit();
 
                     while (i < peers_compact.len) {
                         const ip = [4]u8{
@@ -528,18 +529,15 @@ pub const TorrentFile = struct {
                         try recv_buffer.ensureCapacity(1 << 16);
 
                         try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
+                        std.debug.warn("Tracker {}: added peer {}\n", .{ url, address });
 
                         i += 6;
                     }
-
-                    std.debug.assert(peers.items.len > 0);
-
-                    return peers.toOwnedSlice();
                 },
                 else => continue, // FIXME: support Object (non compact)
             }
         }
-        return error.NoTrackerAvailable;
+        return peers.toOwnedSlice();
     }
 
     pub fn openMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
