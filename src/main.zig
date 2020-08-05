@@ -483,7 +483,7 @@ pub const TorrentFile = struct {
     }
 
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
-        var peers = std.ArrayList(Peer).init(allocator);
+        var peers = std.StringHashMap(Peer).init(allocator);
         defer peers.deinit();
         var tracker_response: ?bencode.ValueTree = null;
 
@@ -529,7 +529,11 @@ pub const TorrentFile = struct {
                         var recv_buffer = std.ArrayList(u8).init(allocator);
                         try recv_buffer.ensureCapacity(1 << 16);
 
-                        try peers.append(Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
+                        var address_str_buf = std.ArrayList(u8).init(allocator);
+                        defer address_str_buf.deinit();
+
+                        try address.format("{}.{}.{}.{}:{}", std.fmt.FormatOptions{}, address_str_buf.writer());
+                        try peers.put(address_str_buf.items, Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
                         std.debug.warn("Tracker {}: added peer {}\n", .{ url, address });
 
                         i += 6;
@@ -538,7 +542,14 @@ pub const TorrentFile = struct {
                 else => continue, // FIXME: support Object (non compact)
             }
         }
-        return peers.toOwnedSlice();
+
+        var peers_array = std.ArrayList(Peer).init(allocator);
+        defer peers_array.deinit();
+
+        var it = peers.iterator();
+        while (it.next()) |entry| try peers_array.append(entry.value);
+
+        return peers_array.toOwnedSlice();
     }
 
     pub fn openMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
