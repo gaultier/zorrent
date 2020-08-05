@@ -450,6 +450,13 @@ pub const TorrentFile = struct {
             return error.CurlSetOptFailed;
         }
 
+        const timeout_seconds: usize = 10;
+        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_TIMEOUT, timeout_seconds);
+        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            return error.CurlSetOptFailed;
+        }
+
         var res_body = std.ArrayList(u8).init(allocator);
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
