@@ -497,13 +497,6 @@ pub const TorrentFile = struct {
 
     fn addUniquePeer(peers: *std.ArrayList(Peer), peer: Peer) !bool {
         for (peers.items) |p| {
-            const a_bytes = @ptrCast([*]const u8, &p.address.any)[0..p.address.getOsSockLen()];
-            const b_bytes = @ptrCast([*]const u8, &peer.address.any)[0..peer.address.getOsSockLen()];
-            std.debug.warn("===\n", .{});
-            hexDump(a_bytes);
-            hexDump(b_bytes);
-            std.debug.warn("===\n", .{});
-
             if (p.address.eql(peer.address)) {
                 return false;
             }
