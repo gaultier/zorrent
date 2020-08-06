@@ -294,7 +294,7 @@ pub const Peer = struct {
 
 pub const TorrentFile = struct {
     announce_urls: [][]const u8,
-    lengthBytesCount: usize,
+    length_bytes_count: usize,
     hash_info: [20]u8,
     downloadedBytesCount: usize,
     uploadedBytesCount: usize,
@@ -369,7 +369,7 @@ pub const TorrentFile = struct {
 
         return TorrentFile{
             .announce_urls = owned_announce_urls.toOwnedSlice(),
-            .lengthBytesCount = @intCast(usize, file_length.?),
+            .length_bytes_count = @intCast(usize, file_length.?),
             .hash_info = hash,
             .uploadedBytesCount = 0,
             .downloadedBytesCount = 0,
@@ -552,14 +552,14 @@ pub const TorrentFile = struct {
     }
 
     pub fn openMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
-        std.debug.warn("path={} lengthBytesCount={}\n", .{ self.path, self.lengthBytesCount });
+        std.debug.warn("path={} length_bytes_count={}\n", .{ self.path, self.length_bytes_count });
         const fd = try std.os.open(self.path, std.os.O_CREAT | std.os.O_RDWR, 438);
-        try std.os.ftruncate(fd, self.lengthBytesCount);
+        try std.os.ftruncate(fd, self.length_bytes_count);
         // FIXME
         // defer std.os.close(fd);
         return try std.os.mmap(
             null,
-            self.lengthBytesCount,
+            self.length_bytes_count,
             std.os.PROT_READ | std.os.PROT_WRITE,
             std.os.MAP_FILE | std.os.MAP_PRIVATE,
             fd,
