@@ -100,8 +100,8 @@ pub const Peer = struct {
     }
 
     pub fn sendPeerId(self: *Peer) !void {
-        const remote_peer_id = "\x00" ** 20; // FIXME
-        try self.socket.?.writeAll(remote_peer_id[0..]);
+        const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+        try self.socket.?.writeAll(peer_id[0..]);
     }
 
     pub fn read(self: *Peer, n: usize) !usize {
@@ -209,7 +209,6 @@ pub const Peer = struct {
             switch (err) {
                 error.ConnectionTimedOut, error.ConnectionRefused => {
                     std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
-                    // self.deinit();
                     return;
                 },
                 else => return err,
@@ -231,14 +230,13 @@ pub const Peer = struct {
         }
         std.debug.warn("{}\tHandshaked\n", .{self.address});
 
-        // Ignore message before handshake
+        // Ignore messages before handshake
         try self.recv_buffer.resize(0);
 
         try self.sendInterested();
         try self.sendChoke();
 
-        var piece_index: u32 = 0;
-        // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
+        var piece_index: u32 = 0; // FIXE: piece picker
 
         const pieces_len: usize = torrent_file.pieces.len / 20;
         var choked = true;
@@ -269,6 +267,8 @@ pub const Peer = struct {
                                 break;
                             }
                         }
+                        // TODO: check hashes
+
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
                         // var actual_hash: [20]u8 = undefined;
                         // std.crypto.Sha1.hash(piece.data[0..], actual_hash[0..]);
@@ -362,7 +362,7 @@ pub const TorrentFile = struct {
         }
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
-            // FIXME
+            // FIXME: multi file download
             if (field.Array.items.len > 0) {
                 var file_field = field.Array.items[0].Object;
                 file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
@@ -404,8 +404,7 @@ pub const TorrentFile = struct {
             try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
         }
 
-        var peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
-        // try std.crypto.randomBytes(peer_id[0..]);
+        const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
 
         try query.appendSlice("&peer_id=");
         for (peer_id) |byte| {
