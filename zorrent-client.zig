@@ -11,8 +11,9 @@ pub fn main() anyerror!void {
 
     var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
     var peers = try torrent_file.getPeers(allocator);
-    std.debug.warn("Peers len: {}\n", .{peers.len});
     defer allocator.destroy(&peers);
+
+    if (peers.len == 0) return error.NoPeersAvailable; // TODO: sleep & retry?
 
     var frames = std.ArrayList(@Frame(zorrent.Peer.handle)).init(allocator);
     defer frames.deinit();
