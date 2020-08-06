@@ -506,63 +506,74 @@ pub const TorrentFile = struct {
         return true;
     }
 
+    fn getPeersFromTracker(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) ![]Peer {
+        var peers = std.ArrayList(Peer).init(allocator);
+        defer peers.deinit();
+
+        std.debug.warn("Tracker {}: trying to contact...\n", .{url});
+        var tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
+            std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
+            return error.TrackerNotAvailable;
+        };
+        std.debug.warn("Tracker {} replied successfuly\n", .{url});
+
+        var dict = tracker_response.root.Object;
+
+        const peers_field = bencode.mapLookup(&dict, "peers");
+        if (peers_field == null) {
+            std.debug.warn("Tracker {}: sent empty peers list, skipping\n", .{url});
+            return error.EmptyPeers;
+        }
+
+        switch (peers_field.?.*) {
+            .String => |peers_compact| {
+                if (peers_compact.len == 0) return error.EmptyPeers;
+                if (peers_compact.len % 6 != 0) {
+                    std.debug.warn("Tracker {}: invalid peers received, skipping\n", .{url});
+                }
+
+                var i: usize = 0;
+
+                while (i < peers_compact.len) {
+                    const ip = [4]u8{
+                        peers_compact[i],
+                        peers_compact[i + 1],
+                        peers_compact[i + 2],
+                        peers_compact[i + 3],
+                    };
+
+                    const peer_port_s = [2]u8{ peers_compact[i + 4], peers_compact[i + 5] };
+                    const peer_port = std.mem.readIntBig(u16, &peer_port_s);
+
+                    const address = std.net.Address.initIp4(ip, peer_port);
+
+                    var recv_buffer = std.ArrayList(u8).init(allocator);
+                    try recv_buffer.ensureCapacity(1 << 16);
+
+                    const peer = Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
+                    if (try addUniquePeer(&peers, peer)) {
+                        std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
+                    }
+
+                    i += 6;
+                }
+            },
+            else => return error.UnsupportedPeerFormat, // FIXME: support Object (non compact)
+        }
+        return peers.toOwnedSlice();
+    }
+
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
-        var tracker_response: ?bencode.ValueTree = null;
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
         // TODO: contact in parallel each tracker
         for (self.announce_urls) |url| {
-            std.debug.warn("Tracker {}: trying to contact...\n", .{url});
-            tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
-                std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
+            var tracker_peers = self.getPeersFromTracker(url, allocator) catch |err| {
+                std.debug.warn("Tracker {}: error {}\n", .{ url, err });
                 continue;
             };
-            std.debug.warn("Tracker {} replied successfuly\n", .{url});
-
-            var dict = tracker_response.?.root.Object;
-
-            const peers_field = bencode.mapLookup(&dict, "peers");
-            if (peers_field == null) {
-                std.debug.warn("Tracker {}: sent empty peers list, skipping\n", .{url});
-                continue;
-            }
-
-            switch (peers_field.?.*) {
-                .String => |peers_compact| {
-                    if (peers_compact.len == 0) continue;
-                    if (peers_compact.len % 6 != 0) {
-                        std.debug.warn("Tracker {}: invalid peers received, skipping\n", .{url});
-                    }
-
-                    var i: usize = 0;
-
-                    while (i < peers_compact.len) {
-                        const ip = [4]u8{
-                            peers_compact[i],
-                            peers_compact[i + 1],
-                            peers_compact[i + 2],
-                            peers_compact[i + 3],
-                        };
-
-                        const peer_port_s = [2]u8{ peers_compact[i + 4], peers_compact[i + 5] };
-                        const peer_port = std.mem.readIntBig(u16, &peer_port_s);
-
-                        const address = std.net.Address.initIp4(ip, peer_port);
-
-                        var recv_buffer = std.ArrayList(u8).init(allocator);
-                        try recv_buffer.ensureCapacity(1 << 16);
-
-                        const peer = Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
-                        if (try addUniquePeer(&peers, peer)) {
-                            std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
-                        }
-
-                        i += 6;
-                    }
-                },
-                else => continue, // FIXME: support Object (non compact)
-            }
+            try peers.appendSlice(tracker_peers);
         }
 
         return peers.toOwnedSlice();
