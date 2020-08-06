@@ -556,10 +556,18 @@ pub const TorrentFile = struct {
                 }
             },
             .Array => |*peers_list| {
-                for (peers_list.items) |*peer| {
-                    const ip = bencode.mapLookup(&peer.Object, "ip").?.String;
-                    const port = bencode.mapLookup(&peer.Object, "port").?.Integer;
+                for (peers_list.items) |*peer_field| {
+                    const ip = bencode.mapLookup(&peer_field.Object, "ip").?.String;
+                    const port = bencode.mapLookup(&peer_field.Object, "port").?.Integer;
                     std.debug.warn("Tracker {}: ip={} port={}\n", .{ url, ip, port });
+                    const address = try std.net.Address.resolveIp(ip, @intCast(u16, port));
+
+                    var recv_buffer = std.ArrayList(u8).init(allocator);
+                    try recv_buffer.ensureCapacity(1 << 16);
+                    const peer = Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
+                    if (try addUniquePeer(peers, peer)) {
+                        std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
+                    }
                 }
             },
             else => return error.InvalidPeerFormat, // FIXME: support Object (non compact)
