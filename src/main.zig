@@ -516,13 +516,9 @@ pub const TorrentFile = struct {
 
         var dict = tracker_response.root.Object;
 
-        const peers_field = bencode.mapLookup(&dict, "peers");
-        if (peers_field == null) {
-            std.debug.warn("Tracker {}: sent empty peers list, skipping\n", .{url});
-            return error.EmptyPeers;
-        }
+        const peers_field = if (bencode.mapLookup(&dict, "peers")) |peers_field| peers_field.* else return error.EmptyPeers;
 
-        switch (peers_field.?.*) {
+        switch (peers_field) {
             .String => |peers_compact| {
                 if (peers_compact.len == 0) return error.EmptyPeers;
                 if (peers_compact.len % 6 != 0) {
@@ -571,7 +567,7 @@ pub const TorrentFile = struct {
                     }
                 }
             },
-            else => return error.InvalidPeerFormat, // FIXME: support Object (non compact)
+            else => return error.InvalidPeerFormat,
         }
     }
 
