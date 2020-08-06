@@ -487,7 +487,9 @@ pub const TorrentFile = struct {
         defer peers.deinit();
         var tracker_response: ?bencode.ValueTree = null;
 
+        // TODO: contact in parallel each tracker
         for (self.announce_urls) |url| {
+            std.debug.warn("Tracker {}: trying to contact...\n", .{url});
             tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
                 std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
                 continue;
@@ -509,7 +511,6 @@ pub const TorrentFile = struct {
                     if (peers_compact.len % 6 != 0) {
                         std.debug.warn("Tracker {}: invalid peers received, skipping\n", .{url});
                     }
-                    std.debug.warn("peers count: {}\n", .{peers_compact.len / 6});
 
                     var i: usize = 0;
 
@@ -531,9 +532,8 @@ pub const TorrentFile = struct {
 
                         const address_key = [6]u8{ peers_compact[i], peers_compact[i + 1], peers_compact[i + 2], peers_compact[i + 3], @intCast(u8, peer_port & 0xff), @intCast(u8, peer_port >> 8) };
 
-                        std.debug.warn("Tracker {}: Try to add peer {} (`{}`) peer len={}, exists={}\n", .{ url, address, address_key[0..], peers.items().len, peers.contains(address_key[0..]) });
                         try peers.put(address_key[0..], Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
-                        std.debug.warn("Tracker {}: added peer `{}` peers_count={}\n", .{ url, address, peers.items().len });
+                        std.debug.warn("Tracker {}: added peer {}\n", .{ url, address });
 
                         i += 6;
                     }
