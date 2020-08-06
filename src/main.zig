@@ -411,7 +411,7 @@ pub const TorrentFile = struct {
             try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
         }
 
-        const port: u16 = 6881;
+        const port: u16 = 6881; // TODO: listen on that port
         try std.fmt.format(query.writer(), "&port={}", .{port});
 
         try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploadedBytesCount});
