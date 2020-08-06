@@ -100,7 +100,7 @@ pub const Peer = struct {
     }
 
     pub fn sendPeerId(self: *Peer) !void {
-        const remote_peer_id = "\x00" ** 20;
+        const remote_peer_id = "\x00" ** 20; // FIXME
         try self.socket.?.writeAll(remote_peer_id[0..]);
     }
 
@@ -508,10 +508,7 @@ pub const TorrentFile = struct {
 
     fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
         std.debug.warn("Tracker {}: trying to contact...\n", .{url});
-        var tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
-            std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
-            return error.TrackerNotAvailable;
-        };
+        var tracker_response = try self.queryAnnounceUrl(url, allocator);
         std.debug.warn("Tracker {} replied successfuly\n", .{url});
 
         var dict = tracker_response.root.Object;
@@ -521,9 +518,7 @@ pub const TorrentFile = struct {
         switch (peers_field) {
             .String => |peers_compact| {
                 if (peers_compact.len == 0) return error.EmptyPeers;
-                if (peers_compact.len % 6 != 0) {
-                    std.debug.warn("Tracker {}: invalid peers received, skipping\n", .{url});
-                }
+                if (peers_compact.len % 6 != 0) return error.InvalidPeerFormat;
 
                 var i: usize = 0;
 
@@ -578,7 +573,7 @@ pub const TorrentFile = struct {
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
             self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.debug.warn("Tracker {}: error {}\n", .{ url, err });
+                std.debug.warn("Tracker {}: {}\n", .{ url, err });
                 continue;
             };
         }
