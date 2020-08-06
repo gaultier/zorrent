@@ -499,6 +499,8 @@ pub const TorrentFile = struct {
         var address_to_peer = std.AutoHashMap([]const u8, Peer).init(allocator);
         defer address_to_peer.deinit();
         var tracker_response: ?bencode.ValueTree = null;
+        var address_keys = std.ArrayList([6]u8).init(allocator);
+        defer address_keys.deinit();
 
         // TODO: contact in parallel each tracker
         for (self.announce_urls) |url| {
@@ -543,9 +545,10 @@ pub const TorrentFile = struct {
                         try recv_buffer.ensureCapacity(1 << 16);
 
                         const address_key = [6]u8{ peers_compact[i], peers_compact[i + 1], peers_compact[i + 2], peers_compact[i + 3], @intCast(u8, peer_port & 0xff), @intCast(u8, peer_port >> 8) };
+                        try address_keys.append(address_key);
 
-                        try address_to_peer.put(address_key[0..], Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
-                        std.debug.warn("Tracker {}: new peer {}\n", .{ url, address });
+                        try address_to_peer.put(address_keys.items[address_keys.items.len - 1][0..], Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
+                        std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, address_to_peer.items().len });
 
                         i += 6;
                     }
