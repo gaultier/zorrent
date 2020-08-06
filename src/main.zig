@@ -49,7 +49,7 @@ pub const Pieces = struct {
 
         var blocks = std.ArrayList(PieceStatus).init(allocator);
         defer blocks.deinit();
-        try blocks.ensureCapacity(blocks_count);
+        try blocks.appendNTimes(PieceStatus.DontHave, blocks_count);
 
         return Pieces{ .seed = seed, .blocks = blocks.toOwnedSlice(), .allocator = allocator, .prng = std.rand.DefaultPrng.init(seed), .piece_acquire_mutex = std.Mutex.init() };
     }
@@ -59,7 +59,7 @@ pub const Pieces = struct {
         self.allocator.destroy(blocks);
     }
 
-    pub fn acquire(self: *Pieces) usize {
+    pub fn acquireBlockIndex(self: *Pieces) usize {
         while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
@@ -168,39 +168,45 @@ pub const Peer = struct {
         return len;
     }
 
-    pub fn requestFullPiece(self: *Peer, piece_index: u32, piece_len: u32) !void {
-        var begin: u32 = 0;
-        while (begin < piece_len) {
-            try self.requestFragmentOfPiece(piece_index, begin);
-            begin += 1 << 16;
-        }
-    }
+    //     pub fn requestFullPiece(self: *Peer, piece_index: u32, piece_len: u32) !void {
+    //         var begin: u32 = 0;
+    //         while (begin < piece_len) {
+    //             try self.requestFragmentOfPiece(piece_index, begin);
+    //             begin += 1 << 16;
+    //         }
+    //     }
 
-    pub fn requestFragmentOfPiece(self: *Peer, piece_index: u32, piece_begin: u32) !void {
+    pub fn requestBlock(self: *Peer, piece_index: u32, block_index: u32, piece_len: u32) !void {
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
 
+        const block_len: u32 = 1 << 14;
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
-        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), piece_begin);
-        const piece_len: u32 = 1 << 14;
-        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), piece_len);
+        const begin = block_index * block_len - piece_index * piece_len;
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), block_len);
 
-        std.debug.warn("{}\tRequest piece #{}_{}\n", .{ self.address, piece_index, piece_begin });
+        std.debug.warn("{}\tRequest piece #{}_{}\n", .{ self.address, piece_index, begin });
         try self.socket.?.writeAll(payload[0..]);
-        std.debug.warn("{}\tRequested piece #{}_{}\n", .{ self.address, piece_index, piece_begin });
+        std.debug.warn("{}\tRequested piece #{}_{}\n", .{ self.address, piece_index, begin });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
-        var recv_buffer: [1 << 15]u8 = undefined;
+        // FIXME: avoid init/deinit all the time
+        var recv_buffer = std.ArrayList(u8).init(self.allocator);
+        defer recv_buffer.deinit();
+        try recv_buffer.appendNTimes(0, 4);
 
         var read_len = try self.socket.?.readAll(recv_buffer[0..4]);
         if (read_len == 0) return null;
 
         const announced_len = std.mem.readIntSliceBig(u32, recv_buffer[0..4]);
-        if (announced_len > (1 << 14 + 9)) return error.AnnouncedLengthTooBig;
+        // if (announced_len > (1 << 14 + 9)) return error.AnnouncedLengthTooBig;
+        std.debug.warn("{}\t: announced_len={}\n", .{ self.address, announced_len });
+        try recv_buffer.appendNTimes(0, announced_len);
 
         _ = try self.socket.?.readAll(recv_buffer[4 .. announced_len + 4]);
 
@@ -281,13 +287,14 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        var piece_index: u32 = 0; // FIXE: piece picker
+        var block_index: u32 = @intCast(u32, pieces.acquireBlockIndex());
+        var piece_index: u32 = block_index / (1 << 14);
 
         const pieces_len: usize = torrent_file.pieces.len / 20;
         var choked = true;
         while (true) {
             if (!choked and piece_index < pieces_len) {
-                try self.requestFullPiece(piece_index, @intCast(u32, torrent_file.piece_len));
+                try self.requestBlock(piece_index, block_index, @intCast(u32, torrent_file.piece_len));
                 piece_index += 1;
             }
             const message = self.parseMessage() catch |err| {
