@@ -292,6 +292,16 @@ pub const Peer = struct {
     }
 };
 
+pub const DownloadFile = struct {
+    fd: usize,
+    data: []align(std.mem.page_size) u8,
+
+    pub fn deinit(self: *DownloadFile) void {
+        defer std.os.munmap(self.data);
+        defer std.os.close(self.fd);
+    }
+};
+
 pub const TorrentFile = struct {
     announce_urls: [][]const u8,
     length_bytes_count: usize,
@@ -498,7 +508,6 @@ pub const TorrentFile = struct {
 
             var dict = tracker_response.?.root.Object;
 
-            // TODO: support non compact format i.e. a list of strings
             const peers_field = bencode.mapLookup(&dict, "peers");
             if (peers_field == null) {
                 std.debug.warn("Tracker {}: sent empty peers list, skipping\n", .{url});
@@ -551,13 +560,11 @@ pub const TorrentFile = struct {
         return peers_array.toOwnedSlice();
     }
 
-    pub fn openMmapFile(self: *TorrentFile) ![]align(std.mem.page_size) u8 {
-        std.debug.warn("path={} length_bytes_count={}\n", .{ self.path, self.length_bytes_count });
+    pub fn openMmapFile(self: *TorrentFile) !DownloadFile {
         const fd = try std.os.open(self.path, std.os.O_CREAT | std.os.O_RDWR, 438);
         try std.os.ftruncate(fd, self.length_bytes_count);
-        // FIXME
-        // defer std.os.close(fd);
-        return try std.os.mmap(
+
+        var data = try std.os.mmap(
             null,
             self.length_bytes_count,
             std.os.PROT_READ | std.os.PROT_WRITE,
@@ -565,5 +572,7 @@ pub const TorrentFile = struct {
             fd,
             0,
         );
+
+        return DownloadFile{ .fd = fd, .data = data };
     }
 };
