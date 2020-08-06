@@ -293,7 +293,7 @@ pub const Peer = struct {
 };
 
 pub const DownloadFile = struct {
-    fd: usize,
+    fd: c_int,
     data: []align(std.mem.page_size) u8,
 
     pub fn deinit(self: *DownloadFile) void {
