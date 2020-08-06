@@ -567,7 +567,7 @@ pub const TorrentFile = struct {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
-        // TODO: contact in parallel each tracker
+        // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
             var tracker_peers = self.getPeersFromTracker(url, allocator) catch |err| {
                 std.debug.warn("Tracker {}: error {}\n", .{ url, err });
