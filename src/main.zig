@@ -241,8 +241,9 @@ pub const Peer = struct {
         // try std.crypto.randomBytes(@ptrCast(*[4]u8, &piece_index));
 
         const pieces_len: usize = torrent_file.pieces.len / 20;
+        var choked = true;
         while (true) {
-            if (piece_index < pieces_len) {
+            if (!choked and piece_index < pieces_len) {
                 try self.requestFullPiece(piece_index, @intCast(u32, torrent_file.piece_len));
                 piece_index += 1;
             }
@@ -255,6 +256,8 @@ pub const Peer = struct {
                 std.debug.warn("{}\tMessage: {}\n", .{ self.address, @tagName(msg) });
 
                 switch (msg) {
+                    Message.Unchoke => choked = false,
+                    Message.Choke => choked = true,
                     Message.Piece => |piece| {
                         const n = piece.data.len;
                         const start = piece.index * (1 << 14) + piece.begin; // FIXME
