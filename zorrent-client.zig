@@ -13,7 +13,7 @@ pub fn main() anyerror!void {
     var peers = try torrent_file.getPeers(allocator);
     defer allocator.destroy(&peers);
 
-    if (peers.len == 0) return error.NoPeersAvailable; // TODO: sleep & retry?
+    if (peers.len == 0) return error.NoPeersAvailable; // TODO: sleep & retry
 
     var frames = std.ArrayList(@Frame(zorrent.Peer.handle)).init(allocator);
     defer frames.deinit();
@@ -22,11 +22,11 @@ pub fn main() anyerror!void {
     var download_file = try torrent_file.openMmapFile();
     defer download_file.deinit();
 
-    var file_mutex = std.Mutex.init();
-    defer file_mutex.deinit();
+    var blocks_count = torrent_file.piece_len * (torrent_file.pieces.len / 20);
+    var pieces = try zorrent.Pieces.init(blocks_count, allocator);
 
     for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, download_file.data, &file_mutex);
+        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, download_file.data, &pieces);
     }
 
     for (frames.items) |*frame| {

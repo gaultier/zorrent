@@ -29,6 +29,51 @@ pub const MessageId = enum(u8) {
     Cancel = 8,
 };
 
+pub const PieceStatus = enum(u2) {
+    DontHave,
+    Requesting,
+    Have,
+};
+
+pub const Pieces = struct {
+    seed: u64,
+    prng: std.rand.DefaultPrng,
+    blocks: []PieceStatus,
+    allocator: *std.mem.Allocator,
+    piece_acquire_mutex: std.Mutex,
+
+    pub fn init(blocks_count: usize, allocator: *std.mem.Allocator) !Pieces {
+        var buf: [8]u8 = undefined;
+        try std.crypto.randomBytes(buf[0..]);
+        const seed = std.mem.readIntLittle(u64, buf[0..8]);
+
+        var blocks = std.ArrayList(PieceStatus).init(allocator);
+        defer blocks.deinit();
+        try blocks.ensureCapacity(blocks_count);
+
+        return Pieces{ .seed = seed, .blocks = blocks.toOwnedSlice(), .allocator = allocator, .prng = std.rand.DefaultPrng.init(seed), .piece_acquire_mutex = std.Mutex.init() };
+    }
+
+    pub fn deinit(self: *Pieces) void {
+        self.piece_acquire_mutex.deinit();
+        self.allocator.destroy(blocks);
+    }
+
+    pub fn acquire(self: *Pieces) usize {
+        while (true) {
+            if (self.piece_acquire_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+                while (true) {
+                    const i = self.prng.random.uintLessThan(usize, self.blocks.len);
+                    if (self.blocks[i] == PieceStatus.DontHave) return i;
+                }
+
+                break;
+            }
+        }
+    }
+};
+
 const MessageRequest = struct { index: u32, begin: u32, length: u32 };
 const MessagePiece = struct { index: u32, begin: u32, data: []const u8 };
 const MessageCancel = struct { index: u32, begin: u32, length: u32 };
@@ -203,7 +248,7 @@ pub const Peer = struct {
         };
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, file_mutex: *std.Mutex) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
         std.debug.warn("{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
@@ -260,13 +305,7 @@ pub const Peer = struct {
                         const n = piece.data.len;
                         const start = piece.index * (1 << 14) + piece.begin; // FIXME
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
-                        while (true) {
-                            if (file_mutex.tryAcquire()) |lock| {
-                                defer lock.release();
-                                std.mem.copy(u8, file_buffer[0..], piece.data[0..]);
-                                break;
-                            }
-                        }
+                        std.mem.copy(u8, file_buffer[0..], piece.data[0..]);
                         // TODO: check hashes
 
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
