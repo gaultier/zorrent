@@ -483,7 +483,7 @@ pub const TorrentFile = struct {
     }
 
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
-        var peers = std.StringHashMap(Peer).init(allocator);
+        var peers = std.AutoHashMap([]const u8, Peer).init(allocator);
         defer peers.deinit();
         var tracker_response: ?bencode.ValueTree = null;
 
@@ -533,8 +533,10 @@ pub const TorrentFile = struct {
                         defer address_str_buf.deinit();
 
                         try address.format("{}.{}.{}.{}:{}", std.fmt.FormatOptions{}, address_str_buf.writer());
-                        try peers.put(address_str_buf.items, Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
-                        std.debug.warn("Tracker {}: added peer {}\n", .{ url, address });
+
+                        std.debug.warn("Tracker {}: Try to add peer {} (`{}`) peer len={}, peers_count={}, exists={}\n", .{ url, address, address_str_buf.items, address_str_buf.items.len, peers.items().len, peers.contains(address_str_buf.items) });
+                        try peers.put(address_str_buf.items[0..], Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
+                        std.debug.warn("Tracker {}: added peer `{}` peers_count={}\n", .{ url, address, peers.items().len });
 
                         i += 6;
                     }
