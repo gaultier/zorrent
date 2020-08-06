@@ -529,13 +529,10 @@ pub const TorrentFile = struct {
                         var recv_buffer = std.ArrayList(u8).init(allocator);
                         try recv_buffer.ensureCapacity(1 << 16);
 
-                        var address_str_buf = std.ArrayList(u8).init(allocator);
-                        defer address_str_buf.deinit();
+                        const address_key = [6]u8{ peers_compact[i], peers_compact[i + 1], peers_compact[i + 2], peers_compact[i + 3], @intCast(u8, peer_port & 0xff), @intCast(u8, peer_port >> 8) };
 
-                        try address.format("{}.{}.{}.{}:{}", std.fmt.FormatOptions{}, address_str_buf.writer());
-
-                        std.debug.warn("Tracker {}: Try to add peer {} (`{}`) peer len={}, peers_count={}, exists={}\n", .{ url, address, address_str_buf.items, address_str_buf.items.len, peers.items().len, peers.contains(address_str_buf.items) });
-                        try peers.put(address_str_buf.items[0..], Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
+                        std.debug.warn("Tracker {}: Try to add peer {} (`{}`) peer len={}, exists={}\n", .{ url, address, address_key[0..], peers.items().len, peers.contains(address_key[0..]) });
+                        try peers.put(address_key[0..], Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator });
                         std.debug.warn("Tracker {}: added peer `{}` peers_count={}\n", .{ url, address, peers.items().len });
 
                         i += 6;
