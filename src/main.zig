@@ -558,10 +558,10 @@ pub const TorrentFile = struct {
             .Array => |*peers_list| {
                 for (peers_list.items) |*peer_field| {
                     // TODO: parse peer_id?
-                    const ip = if(bencode.mapLookup(&peer_field.Object, "ip")) |ip_field| ip_field.String else continue;
-                    const port = if(bencode.mapLookup(&peer_field.Object, "port")) |port_field| port_field.Integer else continue;
+                    const ip = if (bencode.mapLookup(&peer_field.Object, "ip")) |ip_field| ip_field.String else continue;
+                    const port = if (bencode.mapLookup(&peer_field.Object, "port")) |port_field| port_field.Integer else continue;
                     std.debug.warn("Tracker {}: ip={} port={}\n", .{ url, ip, port });
-                    const address = try std.net.Address.resolveIp(ip, @intCast(u16, port));
+                    const address = try std.net.Address.parseIp(ip, @intCast(u16, port));
 
                     var recv_buffer = std.ArrayList(u8).init(allocator);
                     try recv_buffer.ensureCapacity(1 << 16);
