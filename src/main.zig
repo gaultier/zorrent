@@ -555,7 +555,14 @@ pub const TorrentFile = struct {
                     i += 6;
                 }
             },
-            else => return error.UnsupportedPeerFormat, // FIXME: support Object (non compact)
+            .Array => |*peers_list| {
+                for (peers_list.items) |*peer| {
+                    const ip = bencode.mapLookup(&peer.Object, "ip").?.String;
+                    const port = bencode.mapLookup(&peer.Object, "port").?.Integer;
+                    std.debug.warn("Tracker {}: ip={} port={}\n", .{ url, ip, port });
+                }
+            },
+            else => return error.InvalidPeerFormat, // FIXME: support Object (non compact)
         }
     }
 
