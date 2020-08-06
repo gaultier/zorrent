@@ -497,6 +497,13 @@ pub const TorrentFile = struct {
 
     fn addUniquePeer(peers: *std.ArrayList(Peer), peer: Peer) !bool {
         for (peers.items) |p| {
+            const a_bytes = @ptrCast([*]const u8, &p.address.any)[0..p.address.getOsSockLen()];
+            const b_bytes = @ptrCast([*]const u8, &peer.address.any)[0..peer.address.getOsSockLen()];
+            std.debug.warn("===\n", .{});
+            hexDump(a_bytes);
+            hexDump(b_bytes);
+            std.debug.warn("===\n", .{});
+
             if (p.address.eql(peer.address)) {
                 return false;
             }
@@ -506,10 +513,7 @@ pub const TorrentFile = struct {
         return true;
     }
 
-    fn getPeersFromTracker(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) ![]Peer {
-        var peers = std.ArrayList(Peer).init(allocator);
-        defer peers.deinit();
-
+    fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
         std.debug.warn("Tracker {}: trying to contact...\n", .{url});
         var tracker_response = self.queryAnnounceUrl(url, allocator) catch |err| {
             std.debug.warn("Tracker {} not available: {}\n", .{ url, err });
@@ -551,7 +555,7 @@ pub const TorrentFile = struct {
                     try recv_buffer.ensureCapacity(1 << 16);
 
                     const peer = Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
-                    if (try addUniquePeer(&peers, peer)) {
+                    if (try addUniquePeer(peers, peer)) {
                         std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
                     }
 
@@ -560,7 +564,6 @@ pub const TorrentFile = struct {
             },
             else => return error.UnsupportedPeerFormat, // FIXME: support Object (non compact)
         }
-        return peers.toOwnedSlice();
     }
 
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
@@ -569,11 +572,10 @@ pub const TorrentFile = struct {
 
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
-            var tracker_peers = self.getPeersFromTracker(url, allocator) catch |err| {
+            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
                 std.debug.warn("Tracker {}: error {}\n", .{ url, err });
                 continue;
             };
-            try peers.appendSlice(tracker_peers);
         }
 
         return peers.toOwnedSlice();
