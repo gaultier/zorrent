@@ -65,10 +65,23 @@ pub const Pieces = struct {
                 defer lock.release();
                 while (true) {
                     const i = self.prng.random.uintLessThan(usize, self.blocks.len);
-                    if (self.blocks[i] == PieceStatus.DontHave) return i;
+                    if (self.blocks[i] == PieceStatus.DontHave) {
+                        self.blocks[i] = PieceStatus.Requesting;
+                        return i;
+                    }
                 }
 
                 break;
+            }
+        }
+    }
+
+    pub fn releaseBlockIndex(self: *Pieces, i: usize) usize {
+        while (true) {
+            if (self.piece_acquire_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+
+                self.blocks[i] = PieceStatus.DontHave;
             }
         }
     }
@@ -295,6 +308,7 @@ pub const Peer = struct {
             }
             const message = self.parseMessage() catch |err| {
                 std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
+                pieces.releaseBlockIndex(piece_index);
                 return err;
             };
 
