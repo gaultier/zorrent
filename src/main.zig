@@ -272,18 +272,6 @@ pub const Peer = struct {
 
         var len: usize = try self.read(handshake_len);
         while (!isHandshake(self.recv_buffer.items[0..handshake_len])) {
-            // if (len > 0) {
-            //     const message = self.parseMessage() catch |err| {
-            //         std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-            //         return err;
-            //     };
-
-            //     if (message) |msg| {
-            //         std.debug.warn("{}\tNot-handshake message: {}\n", .{ self.address, @tagName(msg) });
-            //     } else {
-            //         hexDump(self.recv_buffer.items[0..handshake_len]);
-            //     }
-            // }
             self.recv_buffer.shrinkRetainingCapacity(0);
             std.time.sleep(1_000_000_000);
             len = try self.read(handshake_len);
@@ -300,7 +288,8 @@ pub const Peer = struct {
         const pieces_len: usize = torrent_file.pieces.len / 20;
         var choked = true;
         while (true) {
-            if (!choked and piece_index < pieces_len) {
+            // if (!choked and piece_index < pieces_len) {
+            if (piece_index < pieces_len) {
                 try self.requestBlock(piece_index, block_index, @intCast(u32, torrent_file.piece_len));
                 piece_index += 1;
             }
