@@ -76,7 +76,7 @@ pub const Pieces = struct {
         }
     }
 
-    pub fn releaseBlockIndex(self: *Pieces, i: usize) usize {
+    pub fn releaseBlockIndex(self: *Pieces, i: usize) void {
         while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
@@ -200,7 +200,7 @@ pub const Peer = struct {
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
-        const begin = block_index * block_len - piece_index * piece_len;
+        const begin: u32 = @intCast(u32, @as(usize, block_index) * @as(usize, block_len) - @as(usize, piece_index) * @as(usize, piece_len));
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), block_len);
 
@@ -295,17 +295,19 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        var block_index: u32 = @intCast(u32, pieces.acquireBlockIndex());
-        var piece_index: u32 = block_index / (1 << 14);
-
         const pieces_len: usize = torrent_file.pieces.len / 20;
+        const blocks_per_piece: u32 = @intCast(u32, torrent_file.piece_len / (1 << 14));
         var choked = true;
         while (true) {
+            const block_index: u32 = @intCast(u32, pieces.acquireBlockIndex());
+            const piece_index: u32 = @intCast(u32, block_index / blocks_per_piece);
+            std.debug.warn("{}:\tblock_index={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, block_index, piece_index, torrent_file.piece_len, pieces_len });
+
             // if (!choked and piece_index < pieces_len) {
             if (piece_index < pieces_len) {
                 try self.requestBlock(piece_index, block_index, @intCast(u32, torrent_file.piece_len));
-                piece_index += 1;
             }
+
             const message = self.parseMessage() catch |err| {
                 std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
                 pieces.releaseBlockIndex(block_index);

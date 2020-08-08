@@ -22,7 +22,7 @@ pub fn main() anyerror!void {
     var download_file = try torrent_file.openMmapFile();
     defer download_file.deinit();
 
-    var blocks_count = torrent_file.piece_len * (torrent_file.pieces.len / 20);
+    var blocks_count = torrent_file.piece_len * (torrent_file.pieces.len / 20) / (1 << 14);
     var pieces = try zorrent.Pieces.init(blocks_count, allocator);
 
     for (peers) |*peer| {
