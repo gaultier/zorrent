@@ -284,7 +284,9 @@ pub const Peer = struct {
         try self.sendHandshake(torrent_file.hash_info);
 
         var len: usize = try self.read(handshake_len);
-        while (!isHandshake(self.recv_buffer.items[0..handshake_len])) {
+        while (true) {
+            if (len >= handshake_len and isHandshake(self.recv_buffer.items[0..handshake_len])) break;
+
             self.recv_buffer.shrinkRetainingCapacity(0);
             std.time.sleep(1_000_000_000);
             len = try self.read(handshake_len);
