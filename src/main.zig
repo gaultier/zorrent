@@ -398,7 +398,8 @@ pub const TorrentFile = struct {
 
                 if (real_url.len == 1) {
                     const real_real_url = real_url[0].String;
-                    if (real_real_url.len >= 6 and std.mem.eql(u8, real_real_url[0..7], "http://")) {
+                    std.debug.warn("real_real_url={}\n", .{real_real_url});
+                    if (real_real_url.len >= 7 and std.mem.eql(u8, real_real_url[0..7], "http://")) {
                         try owned_announce_urls.append(try allocator.dupe(u8, real_real_url));
                     }
                 }
