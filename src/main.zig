@@ -308,7 +308,7 @@ pub const Peer = struct {
             }
             const message = self.parseMessage() catch |err| {
                 std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                pieces.releaseBlockIndex(piece_index);
+                pieces.releaseBlockIndex(block_index);
                 return err;
             };
 
