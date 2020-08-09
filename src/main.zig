@@ -218,7 +218,10 @@ pub const Peer = struct {
         hexDump(self.recv_buffer.items[0..4]);
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
-        if (announced_len == 0 or announced_len > (block_len + 9)) return error.InvalidAnnouncedLength;
+        if (announced_len == 0 or announced_len > (block_len + 9)) {
+            std.debug.warn("{}\tinvalid announced_len: {}\n", .{ self.address, announced_len });
+            return error.InvalidAnnouncedLength;
+        }
         try self.recv_buffer.resize(announced_len);
 
         _ = try self.socket.?.readAll(self.recv_buffer.items[0..announced_len]);
