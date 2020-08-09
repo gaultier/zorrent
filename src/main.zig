@@ -112,8 +112,8 @@ pub const PeerState = enum {
     Down,
 };
 
-const handshake_len: usize = 1 + 19 + 8 + 20 + 20;
-const block_len: usize = 1 << 14;
+pub const handshake_len: usize = 1 + 19 + 8 + 20 + 20;
+pub const block_len: usize = 1 << 14;
 
 fn isHandshake(buffer: []const u8) bool {
     return (buffer.len == handshake_len and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
@@ -197,7 +197,6 @@ pub const Peer = struct {
         var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
 
-        const block_len: u32 = block_len;
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
