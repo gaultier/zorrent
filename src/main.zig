@@ -388,7 +388,10 @@ pub const TorrentFile = struct {
 
         var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
         if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
-            try owned_announce_urls.append(try allocator.dupe(u8, field.String));
+            const real_url = field.String;
+            if (real_url.len >= 7 and std.mem.eql(u8, real_url[0..7], "http://")) {
+                try owned_announce_urls.append(try allocator.dupe(u8, field.String));
+            }
         }
 
         if (bencode.mapLookup(&value.root.Object, "announce-list")) |field| {
@@ -398,7 +401,6 @@ pub const TorrentFile = struct {
 
                 if (real_url.len == 1) {
                     const real_real_url = real_url[0].String;
-                    std.debug.warn("real_real_url={}\n", .{real_real_url});
                     if (real_real_url.len >= 7 and std.mem.eql(u8, real_real_url[0..7], "http://")) {
                         try owned_announce_urls.append(try allocator.dupe(u8, real_real_url));
                     }
