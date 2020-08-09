@@ -113,6 +113,7 @@ pub const PeerState = enum {
 };
 
 const handshake_len: usize = 1 + 19 + 8 + 20 + 20;
+const block_len: usize = 1 << 14;
 
 fn isHandshake(buffer: []const u8) bool {
     return (buffer.len == handshake_len and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
@@ -165,8 +166,8 @@ pub const Peer = struct {
     }
 
     pub fn read(self: *Peer, n: usize) !usize {
-        var payload: [1 << 14]u8 = undefined;
-        std.debug.assert(n <= (1 << 14));
+        var payload: [block_len]u8 = undefined;
+        std.debug.assert(n <= (block_len));
 
         const len = self.socket.?.read(payload[0..n]) catch |err| {
             std.debug.warn("{}\t{}\n", .{ self.address, err });
@@ -196,7 +197,7 @@ pub const Peer = struct {
         var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
 
-        const block_len: u32 = 1 << 14;
+        const block_len: u32 = block_len;
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
@@ -218,7 +219,7 @@ pub const Peer = struct {
         hexDump(self.recv_buffer.items[0..4]);
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
-        if (announced_len > (1 << 14 + 9)) return error.AnnouncedLengthTooBig;
+        if (announced_len > (block_len + 9)) return error.AnnouncedLengthTooBig;
         try self.recv_buffer.resize(announced_len);
 
         _ = try self.socket.?.readAll(self.recv_buffer.items[0..announced_len]);
@@ -298,12 +299,13 @@ pub const Peer = struct {
         try self.sendChoke();
 
         const pieces_len: usize = torrent_file.pieces.len / 20;
-        const blocks_per_piece: u32 = @intCast(u32, torrent_file.piece_len / (1 << 14));
+        const blocks_per_piece: u32 = @intCast(u32, torrent_file.piece_len / (block_len));
         var choked = true;
+
         while (true) {
             const block_index: u32 = @intCast(u32, pieces.acquireBlockIndex());
             const piece_index: u32 = @intCast(u32, block_index / blocks_per_piece);
-            std.debug.warn("{}:\tblock_index={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, block_index, piece_index, torrent_file.piece_len, pieces_len });
+            std.debug.warn("{}\tblock_index={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, block_index, piece_index, torrent_file.piece_len, pieces_len });
 
             // if (!choked and piece_index < pieces_len) {
             if (piece_index < pieces_len) {
@@ -324,7 +326,7 @@ pub const Peer = struct {
                     Message.Choke => choked = true,
                     Message.Piece => |piece| {
                         const n = piece.data.len;
-                        const start = piece.index * (1 << 14) + piece.begin; // FIXME
+                        const start = piece.index * torrent_file.piece_len + piece.begin;
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
                         std.mem.copy(u8, file_buffer[0..], piece.data[0..]);
                         // TODO: check hashes
