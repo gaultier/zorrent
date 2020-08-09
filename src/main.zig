@@ -218,7 +218,7 @@ pub const Peer = struct {
         hexDump(self.recv_buffer.items[0..4]);
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
-        if (announced_len > (block_len + 9)) return error.AnnouncedLengthTooBig;
+        if (announced_len == 0 or announced_len > (block_len + 9)) return error.InvalidAnnouncedLength;
         try self.recv_buffer.resize(announced_len);
 
         _ = try self.socket.?.readAll(self.recv_buffer.items[0..announced_len]);
@@ -300,6 +300,7 @@ pub const Peer = struct {
         const pieces_len: usize = torrent_file.pieces.len / 20;
         const blocks_per_piece: u32 = @intCast(u32, torrent_file.piece_len / (block_len));
         var choked = true;
+        var requests_in_flight: usize = 0;
 
         while (true) {
             const block_index: u32 = @intCast(u32, pieces.acquireBlockIndex());
@@ -307,8 +308,9 @@ pub const Peer = struct {
             std.debug.warn("{}\tblock_index={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, block_index, piece_index, torrent_file.piece_len, pieces_len });
 
             // if (!choked and piece_index < pieces_len) {
-            if (piece_index < pieces_len) {
+            if (requests_in_flight < 20 and piece_index < pieces_len) {
                 try self.requestBlock(piece_index, block_index, @intCast(u32, torrent_file.piece_len));
+                requests_in_flight += 1;
             }
 
             const message = self.parseMessage() catch |err| {
@@ -329,6 +331,7 @@ pub const Peer = struct {
 
                         // Malformed piece, skip
                         if (piece.index != piece_index or (start + n > file_buffer.len)) continue;
+                        requests_in_flight -= 1;
 
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
                         std.mem.copy(u8, file_buffer[0..], piece.data[0..]);
