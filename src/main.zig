@@ -326,6 +326,10 @@ pub const Peer = struct {
                     Message.Piece => |piece| {
                         const n = piece.data.len;
                         const start = piece.index * torrent_file.piece_len + piece.begin;
+
+                        // Malformed piece, skip
+                        if (piece.index != piece_index or (start + n > file_buffer.len)) continue;
+
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
                         std.mem.copy(u8, file_buffer[0..], piece.data[0..]);
                         // TODO: check hashes
