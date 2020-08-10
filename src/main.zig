@@ -65,7 +65,8 @@ pub const Pieces = struct {
     }
 
     pub fn acquireFileOffset(self: *Pieces) ?usize {
-        while (true) {
+        var trial: u32 = 0;
+        while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
                 if (self.remaining_file_offsets.items.len == 0) return null;
@@ -76,6 +77,7 @@ pub const Pieces = struct {
                 return file_offset;
             }
         }
+        return null;
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
