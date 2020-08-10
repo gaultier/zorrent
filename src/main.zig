@@ -54,6 +54,7 @@ pub const Pieces = struct {
         while (i < file_len) : (i += block_len) {
             remaining_file_offsets.addOneAssumeCapacity().* = i;
         }
+        std.debug.warn("remaining_file_offsets len: {}\n", .{remaining_file_offsets.items.len});
 
         return Pieces{ .seed = seed, .remaining_file_offsets = remaining_file_offsets, .allocator = allocator, .prng = std.rand.DefaultPrng.init(seed), .piece_acquire_mutex = std.Mutex.init() };
     }
@@ -63,10 +64,12 @@ pub const Pieces = struct {
         self.remaining_file_offsets.deinit();
     }
 
-    pub fn acquireFileOffset(self: *Pieces) usize {
+    pub fn acquireFileOffset(self: *Pieces) ?usize {
         while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
+                if (self.remaining_file_offsets.items.len == 0) return null;
+
                 const i = self.prng.random.uintLessThan(usize, self.remaining_file_offsets.items.len);
                 const file_offset = self.remaining_file_offsets.items[i];
                 _ = self.remaining_file_offsets.swapRemove(i);
@@ -309,18 +312,20 @@ pub const Peer = struct {
 
         while (true) {
             const file_offset = pieces.acquireFileOffset();
-            const piece_index: u32 = @intCast(u32, file_offset / (pieces_len * block_len));
-            std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset, piece_index, torrent_file.piece_len, pieces_len });
+            if (file_offset == null) return;
+
+            const piece_index: u32 = @intCast(u32, file_offset.? / (pieces_len * block_len));
+            std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset.?, piece_index, torrent_file.piece_len, pieces_len });
 
             // if (!choked and piece_index < pieces_len) {
             if (requests_in_flight < 20 and piece_index < pieces_len) {
-                try self.requestBlock(piece_index, file_offset, @intCast(u32, torrent_file.piece_len));
+                try self.requestBlock(piece_index, file_offset.?, @intCast(u32, torrent_file.piece_len));
                 requests_in_flight += 1;
             }
 
             const message = self.parseMessage() catch |err| {
                 std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                pieces.releaseFileOffset(file_offset);
+                pieces.releaseFileOffset(file_offset.?);
                 return err;
             };
 
@@ -337,13 +342,13 @@ pub const Peer = struct {
                         // Malformed piece, skip
                         if (piece.index != piece_index or (start + n > file_buffer.len)) {
                             std.debug.warn("{}\tMalformed piece: {}\n", .{ self.address, piece });
-                            pieces.releaseFileOffset(file_offset);
+                            pieces.releaseFileOffset(file_offset.?);
                             continue;
                         }
                         requests_in_flight -= 1;
 
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
-                        std.mem.copy(u8, file_buffer[file_offset..], piece.data[0..]);
+                        std.mem.copy(u8, file_buffer[file_offset.?..], piece.data[0..]);
                         // TODO: check hashes
 
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
