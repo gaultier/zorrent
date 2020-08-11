@@ -76,8 +76,21 @@ pub const Pieces = struct {
                 _ = self.remaining_file_offsets.swapRemove(i);
                 return file_offset;
             }
+            std.time.sleep(1_000);
         }
         return null;
+    }
+
+    pub fn isFinished(self: *Pieces) bool {
+        var trial: u32 = 0;
+        while (trial < 20) : (trial += 1) {
+            if (self.piece_acquire_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+                return (self.remaining_file_offsets.items.len == 0);
+            }
+            std.time.sleep(1_000);
+        }
+        return false;
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
@@ -219,13 +232,12 @@ pub const Peer = struct {
 
         var read_len = try self.socket.?.readAll(self.recv_buffer.items[0..4]);
         if (read_len == 0) return null;
-        hexDump(self.recv_buffer.items[0..4]);
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
         if (announced_len == 0) return null; // Heartbeat
 
         if (announced_len > (block_len + 9)) {
-            std.debug.warn("{}\tinvalid announced_len: {}\n", .{ self.address, announced_len });
+            std.debug.warn("{}\tInvalid announced_len: {}\n", .{ self.address, announced_len });
             return error.InvalidAnnouncedLength;
         }
 
@@ -313,8 +325,11 @@ pub const Peer = struct {
         var requests_in_flight: usize = 0;
 
         while (true) {
+            if (pieces.isFinished()) {
+                std.debug.warn("{}\tFinished\n", .{self.address});
+                return;
+            }
             const file_offset = pieces.acquireFileOffset();
-            if (file_offset == null) return;
 
             const piece_index: u32 = @intCast(u32, file_offset.? / (pieces_len * block_len));
             std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset.?, piece_index, torrent_file.piece_len, pieces_len });
