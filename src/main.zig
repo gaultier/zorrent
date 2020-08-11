@@ -40,7 +40,7 @@ pub const Pieces = struct {
     prng: std.rand.DefaultPrng,
     remaining_file_offsets: std.ArrayList(usize),
     allocator: *std.mem.Allocator,
-    piece_acquire_mutex: std.Mutex,
+    piece_acquire_mutex: std.Mutex, // FIXME: remove, use atomic stack?
 
     pub fn init(file_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var buf: [8]u8 = undefined;
