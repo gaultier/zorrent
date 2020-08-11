@@ -389,6 +389,8 @@ pub const Peer = struct {
                     },
                     else => {},
                 }
+            } else {
+                std.time.sleep(500_000_000);
             }
         }
     }
