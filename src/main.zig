@@ -256,7 +256,7 @@ pub const Peer = struct {
             .Interested => Message.Interested,
             .Uninterested => Message.Uninterested,
             .Have => Message{ .Have = std.mem.readIntSliceBig(u32, self.recv_buffer.items[1..5]) },
-            .Bitfield => Message{ .Bitfield = self.recv_buffer.items[5..] }, // FIXME:segfault
+            .Bitfield => Message{ .Bitfield = try self.allocator.dupe(u8, self.recv_buffer.items[1..announced_len]) },
             .Request => Message{
                 .Request = MessageRequest{
                     .index = std.mem.readIntSliceBig(u32, self.recv_buffer.items[1..5]),
@@ -352,6 +352,11 @@ pub const Peer = struct {
                 switch (msg) {
                     Message.Unchoke => choked = false,
                     Message.Choke => choked = true,
+                    Message.Bitfield => |bitfield| {
+                        defer bitfield.deinit();
+                        std.debug.warn("{}\tbitfield: ", .{self.address});
+                        hexDump(bitfield);
+                    },
                     Message.Piece => |piece| {
                         const n = piece.data.len;
                         const start = piece.index * torrent_file.piece_len + piece.begin;
