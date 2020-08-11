@@ -81,6 +81,7 @@ pub const Pieces = struct {
         return null;
     }
 
+    // FIXME: finished iff all pieces arrived (and hash is ok)
     pub fn isFinished(self: *Pieces) bool {
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
