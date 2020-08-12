@@ -224,15 +224,9 @@ pub const Peer = struct {
         return len;
     }
 
-    //     pub fn requestFullPiece(self: *Peer, piece_index: u32, piece_len: u32) !void {
-    //         var begin: u32 = 0;
-    //         while (begin < piece_len) {
-    //             try self.requestFragmentOfPiece(piece_index, begin);
-    //             begin += 1 << 16;
-    //         }
-    //     }
+    pub fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32) !void {
+        const piece_index: u32 = @intCast(u32, file_offset / piece_len);
 
-    pub fn requestBlock(self: *Peer, piece_index: u32, file_offset: usize, piece_len: u32) !void {
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
@@ -244,9 +238,9 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), block_len);
 
-        std.debug.warn("{}\tRequest piece #{}_{}\n", .{ self.address, piece_index, begin });
+        std.debug.warn("{}\tRequest piece: index={} begin={} file_offset={} piece_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len });
         try self.socket.?.writeAll(payload[0..]);
-        std.debug.warn("{}\tRequested piece #{}_{}\n", .{ self.address, piece_index, begin });
+        std.debug.warn("{}\tRequested piece: index={} begin={} file_offset={} piece_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
@@ -346,33 +340,17 @@ pub const Peer = struct {
         const blocks_per_piece: usize = torrent_file.piece_len / block_len;
         var choked = true;
         var requests_in_flight: usize = 0;
+        const max_requests_in_flight: usize = 1;
+        var file_offset_opt: ?usize = null;
 
         while (true) {
-            if (pieces.isFinished()) {
-                std.debug.warn("{}\tFinished\n", .{self.address});
-                return;
-            }
-            const file_offset_opt = pieces.acquireFileOffset();
-            if (file_offset_opt == null) {
-                std.time.sleep(100_000_000);
-                continue;
-            }
-            const file_offset: usize = file_offset_opt.?;
-
-            const piece_index: u32 = @intCast(u32, file_offset / (pieces_len * block_len));
-            std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset, piece_index, torrent_file.piece_len, pieces_len });
-
-            if (!choked and requests_in_flight < 20 and piece_index < pieces_len) {
-                try self.requestBlock(piece_index, file_offset, @intCast(u32, torrent_file.piece_len));
-                requests_in_flight += 1;
-            }
-
             const message = self.parseMessage() catch |err| {
                 std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                pieces.releaseFileOffset(file_offset);
+                if (file_offset_opt) |file_offset| {
+                    pieces.releaseFileOffset(file_offset);
+                }
                 return err;
             };
-
             if (message) |msg| {
                 std.debug.warn("{}\tMessage: {}\n", .{ self.address, @tagName(msg) });
 
@@ -385,20 +363,26 @@ pub const Peer = struct {
                         hexDump(bitfield);
                     },
                     Message.Piece => |piece| {
+                        if (file_offset_opt == null) continue;
+
+                        requests_in_flight -= 1;
+                        const expected_piece_index: u32 = @intCast(u32, file_offset_opt.? / torrent_file.piece_len);
                         const n = piece.data.len;
                         const start = piece.index * torrent_file.piece_len + piece.begin;
 
                         // Malformed piece, skip
-                        if (piece.index != piece_index or (start + n > file_buffer.len)) {
-                            std.debug.warn("{}\tMalformed piece: {}\n", .{ self.address, piece });
-                            pieces.releaseFileOffset(file_offset);
+                        if (piece.index != expected_piece_index or (start + n > file_buffer.len)) {
+                            std.debug.warn("{}\tMalformed piece: index={} begin={} expected_piece_index={} requested_file_offset={}\n", .{
+                                self.address,         piece.index,       piece.begin,
+                                expected_piece_index, file_offset_opt.?,
+                            });
+                            pieces.releaseFileOffset(file_offset_opt.?);
                             continue;
                         }
-                        requests_in_flight -= 1;
 
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
-                        std.mem.copy(u8, file_buffer[file_offset..], piece.data[0..]);
-                        pieces.commitFileOffset(file_offset);
+                        std.mem.copy(u8, file_buffer[file_offset_opt.?..], piece.data[0..]);
+                        pieces.commitFileOffset(file_offset_opt.?);
                         // TODO: check hashes
 
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
@@ -424,6 +408,21 @@ pub const Peer = struct {
                 }
             } else {
                 std.time.sleep(500_000_000);
+            }
+
+            if (pieces.isFinished()) {
+                std.debug.warn("{}\tFinished\n", .{self.address});
+                return;
+            }
+
+            if (!choked and requests_in_flight < max_requests_in_flight) {
+                file_offset_opt = pieces.acquireFileOffset();
+                if (file_offset_opt == null) {
+                    std.time.sleep(100_000_000);
+                    continue;
+                }
+                try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len));
+                requests_in_flight += 1;
             }
         }
     }
@@ -702,16 +701,16 @@ pub const TorrentFile = struct {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
-        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 52035);
+        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
         try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
-        for (self.announce_urls) |url| {
-            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.debug.warn("Tracker {}: {}\n", .{ url, err });
-                continue;
-            };
-        }
+        //        for (self.announce_urls) |url| {
+        //            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
+        //                std.debug.warn("Tracker {}: {}\n", .{ url, err });
+        //                continue;
+        //            };
+        //        }
 
         return peers.toOwnedSlice();
     }
