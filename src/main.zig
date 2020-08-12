@@ -190,6 +190,8 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Interested));
         try self.socket.?.writeAll(msg[0..]);
+
+        std.debug.warn("{}\tInterested\n", .{self.address});
     }
 
     pub fn sendChoke(self: *Peer) !void {
@@ -198,6 +200,8 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Choke));
         try self.socket.?.writeAll(msg[0..]);
+
+        std.debug.warn("{}\tChoke\n", .{self.address});
     }
 
     pub fn sendPeerId(self: *Peer) !void {
