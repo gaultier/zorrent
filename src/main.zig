@@ -40,7 +40,10 @@ pub const Pieces = struct {
     prng: std.rand.DefaultPrng,
     remaining_file_offsets: std.ArrayList(usize),
     allocator: *std.mem.Allocator,
-    piece_acquire_mutex: std.Mutex, // FIXME: remove, use atomic stack?
+    piece_acquire_mutex: std.Mutex,
+    have_mutex: std.Mutex,
+    have_file_offsets: std.ArrayList(usize),
+    want_len: usize,
 
     pub fn init(file_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var buf: [8]u8 = undefined;
@@ -56,7 +59,19 @@ pub const Pieces = struct {
         }
         std.debug.warn("remaining_file_offsets len: {}\n", .{remaining_file_offsets.items.len});
 
-        return Pieces{ .seed = seed, .remaining_file_offsets = remaining_file_offsets, .allocator = allocator, .prng = std.rand.DefaultPrng.init(seed), .piece_acquire_mutex = std.Mutex.init() };
+        var have_file_offsets = std.ArrayList(usize).init(allocator);
+        try have_file_offsets.ensureCapacity(remaining_file_offsets.items.len);
+
+        return Pieces{
+            .seed = seed,
+            .remaining_file_offsets = remaining_file_offsets,
+            .allocator = allocator,
+            .prng = std.rand.DefaultPrng.init(seed),
+            .piece_acquire_mutex = std.Mutex{},
+            .have_mutex = std.Mutex{},
+            .have_file_offsets = have_file_offsets,
+            .want_len = remaining_file_offsets.items.len,
+        };
     }
 
     pub fn deinit(self: *Pieces) void {
@@ -81,13 +96,24 @@ pub const Pieces = struct {
         return null;
     }
 
+    pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
+        while (true) {
+            if (self.have_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+                self.have_file_offsets.addOneAssumeCapacity().* = file_offset;
+                return;
+            }
+            std.time.sleep(1_000);
+        }
+    }
+
     // FIXME: finished iff all pieces arrived (and hash is ok)
     pub fn isFinished(self: *Pieces) bool {
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
-            if (self.piece_acquire_mutex.tryAcquire()) |lock| {
+            if (self.have_mutex.tryAcquire()) |lock| {
                 defer lock.release();
-                return (self.remaining_file_offsets.items.len == 0);
+                return (self.have_file_offsets.items.len == self.want_len);
             }
             std.time.sleep(1_000);
         }
@@ -330,20 +356,25 @@ pub const Peer = struct {
                 std.debug.warn("{}\tFinished\n", .{self.address});
                 return;
             }
-            const file_offset = pieces.acquireFileOffset();
+            const file_offset_opt = pieces.acquireFileOffset();
+            if (file_offset_opt == null) {
+                std.time.sleep(100_000_000);
+                continue;
+            }
+            const file_offset: usize = file_offset_opt.?;
 
-            const piece_index: u32 = @intCast(u32, file_offset.? / (pieces_len * block_len));
-            std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset.?, piece_index, torrent_file.piece_len, pieces_len });
+            const piece_index: u32 = @intCast(u32, file_offset / (pieces_len * block_len));
+            std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset, piece_index, torrent_file.piece_len, pieces_len });
 
             // if (!choked and piece_index < pieces_len) {
             if (requests_in_flight < 20 and piece_index < pieces_len) {
-                try self.requestBlock(piece_index, file_offset.?, @intCast(u32, torrent_file.piece_len));
+                try self.requestBlock(piece_index, file_offset, @intCast(u32, torrent_file.piece_len));
                 requests_in_flight += 1;
             }
 
             const message = self.parseMessage() catch |err| {
                 std.debug.warn("{}\tError parsing message: {}\n", .{ self.address, err });
-                pieces.releaseFileOffset(file_offset.?);
+                pieces.releaseFileOffset(file_offset);
                 return err;
             };
 
@@ -354,7 +385,7 @@ pub const Peer = struct {
                     Message.Unchoke => choked = false,
                     Message.Choke => choked = true,
                     Message.Bitfield => |bitfield| {
-                        defer bitfield.deinit();
+                        defer self.allocator.free(bitfield);
                         std.debug.warn("{}\tbitfield: ", .{self.address});
                         hexDump(bitfield);
                     },
@@ -365,13 +396,14 @@ pub const Peer = struct {
                         // Malformed piece, skip
                         if (piece.index != piece_index or (start + n > file_buffer.len)) {
                             std.debug.warn("{}\tMalformed piece: {}\n", .{ self.address, piece });
-                            pieces.releaseFileOffset(file_offset.?);
+                            pieces.releaseFileOffset(file_offset);
                             continue;
                         }
                         requests_in_flight -= 1;
 
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
-                        std.mem.copy(u8, file_buffer[file_offset.?..], piece.data[0..]);
+                        std.mem.copy(u8, file_buffer[file_offset..], piece.data[0..]);
+                        pieces.commitFileOffset(file_offset);
                         // TODO: check hashes
 
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
