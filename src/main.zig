@@ -366,8 +366,7 @@ pub const Peer = struct {
             const piece_index: u32 = @intCast(u32, file_offset / (pieces_len * block_len));
             std.debug.warn("{}\tfile_offset={} piece_index={} piece_len={} pieces_len={}\n", .{ self.address, file_offset, piece_index, torrent_file.piece_len, pieces_len });
 
-            // if (!choked and piece_index < pieces_len) {
-            if (requests_in_flight < 20 and piece_index < pieces_len) {
+            if (!choked and requests_in_flight < 20 and piece_index < pieces_len) {
                 try self.requestBlock(piece_index, file_offset, @intCast(u32, torrent_file.piece_len));
                 requests_in_flight += 1;
             }
