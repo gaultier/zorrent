@@ -147,15 +147,6 @@ pub const Message = union(MessageId) {
     Piece: MessagePiece,
 };
 
-pub const PeerState = enum {
-    Unknown,
-    Connected,
-    SentHandshake,
-    Handshaked,
-    ReadyToReceivePieces,
-    Down,
-};
-
 pub const handshake_len: usize = 1 + 19 + 8 + 20 + 20;
 pub const block_len: usize = 1 << 14;
 
@@ -165,10 +156,15 @@ fn isHandshake(buffer: []const u8) bool {
 
 pub const Peer = struct {
     address: std.net.Address,
-    state: PeerState,
     socket: ?std.fs.File,
     recv_buffer: std.ArrayList(u8),
     allocator: *std.mem.Allocator,
+
+    pub fn init(address: std.net.Address, allocator: *std.mem.Allocator) !Peer {
+        var recv_buffer = std.ArrayList(u8).init(allocator);
+        try recv_buffer.ensureCapacity(1 << 16);
+        return Peer{ .address = address, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
+    }
 
     pub fn connect(self: *Peer) !void {
         self.socket = try std.net.tcpConnectToAddress(self.address);
@@ -675,10 +671,8 @@ pub const TorrentFile = struct {
 
                     const address = std.net.Address.initIp4(ip, peer_port);
 
-                    var recv_buffer = std.ArrayList(u8).init(allocator);
-                    try recv_buffer.ensureCapacity(1 << 16);
+                    const peer = try Peer.init(address, allocator);
 
-                    const peer = Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
                     if (try addUniquePeer(peers, peer)) {
                         std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
                     }
@@ -694,9 +688,7 @@ pub const TorrentFile = struct {
                     std.debug.warn("Tracker {}: ip={} port={}\n", .{ url, ip, port });
                     const address = try std.net.Address.parseIp(ip, @intCast(u16, port));
 
-                    var recv_buffer = std.ArrayList(u8).init(allocator);
-                    try recv_buffer.ensureCapacity(1 << 16);
-                    const peer = Peer{ .address = address, .state = PeerState.Unknown, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
+                    const peer = try Peer.init(address, allocator);
                     if (try addUniquePeer(peers, peer)) {
                         std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
                     }
@@ -709,6 +701,9 @@ pub const TorrentFile = struct {
     pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
+
+        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 52035);
+        try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
