@@ -41,8 +41,7 @@ pub const Pieces = struct {
     remaining_file_offsets: std.ArrayList(usize),
     allocator: *std.mem.Allocator,
     piece_acquire_mutex: std.Mutex,
-    have_mutex: std.Mutex,
-    have_file_offsets: std.ArrayList(usize),
+    init_want_len: usize,
     have_count: std.atomic.Int(usize),
     want_count: std.atomic.Int(usize),
 
@@ -60,19 +59,15 @@ pub const Pieces = struct {
         }
         std.debug.warn("remaining_file_offsets len: {}\n", .{remaining_file_offsets.items.len});
 
-        var have_file_offsets = std.ArrayList(usize).init(allocator);
-        try have_file_offsets.ensureCapacity(remaining_file_offsets.items.len);
-
         return Pieces{
             .seed = seed,
             .remaining_file_offsets = remaining_file_offsets,
             .allocator = allocator,
             .prng = std.rand.DefaultPrng.init(seed),
             .piece_acquire_mutex = std.Mutex{},
-            .have_mutex = std.Mutex{},
-            .have_file_offsets = have_file_offsets,
             .have_count = std.atomic.Int(usize).init(0),
             .want_count = std.atomic.Int(usize).init(remaining_file_offsets.items.len),
+            .init_want_len = remaining_file_offsets.items.len,
         };
     }
 
@@ -102,28 +97,12 @@ pub const Pieces = struct {
     }
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
-        while (true) {
-            if (self.have_mutex.tryAcquire()) |lock| {
-                defer lock.release();
-                self.have_file_offsets.addOneAssumeCapacity().* = file_offset;
-                _ = self.have_count.incr();
-                return;
-            }
-            std.time.sleep(1_000);
-        }
+        _ = self.have_count.incr();
     }
 
     // FIXME: finished iff all pieces arrived (and hash is ok)
     pub fn isFinished(self: *Pieces) bool {
-        var trial: u32 = 0;
-        while (trial < 20) : (trial += 1) {
-            if (self.have_mutex.tryAcquire()) |lock| {
-                defer lock.release();
-                return (self.have_file_offsets.items.len == self.want_count.get());
-            }
-            std.time.sleep(1_000);
-        }
-        return false;
+        return self.init_want_len == self.have_count.get();
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
