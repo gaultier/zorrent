@@ -390,23 +390,29 @@ pub const Peer = struct {
                         if (file_offset_opt == null) continue;
 
                         requests_in_flight -= 1;
-                        const expected_piece_index: u32 = @intCast(u32, file_offset_opt.? / torrent_file.piece_len);
-                        const n = piece.data.len;
-                        const start = piece.index * torrent_file.piece_len + piece.begin;
+                        const file_offset = file_offset_opt.?;
+
+                        const expected_piece_index: u32 = @intCast(u32, file_offset / torrent_file.piece_len);
+                        const expected_begin: u32 = @intCast(u32, file_offset - @as(usize, expected_piece_index) * @as(usize, torrent_file.piece_len));
+                        const expected_len = @intCast(u32, std.math.min(block_len, torrent_file.length_bytes_count - (expected_piece_index * torrent_file.piece_len + expected_begin)));
+                        const actual_piece_index = piece.index;
+                        const actual_begin = piece.begin;
+                        const actual_len = piece.data.len;
+                        const actual_file_offset = piece.index * torrent_file.piece_len + piece.begin;
 
                         // Malformed piece, skip
-                        if (piece.index != expected_piece_index or (start + n > file_buffer.len)) {
+                        if (actual_piece_index != expected_piece_index or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
                             std.debug.warn("{}\tMalformed piece: index={} begin={} expected_piece_index={} requested_file_offset={}\n", .{
-                                self.address,         piece.index,       piece.begin,
-                                expected_piece_index, file_offset_opt.?,
+                                self.address,         piece.index, piece.begin,
+                                expected_piece_index, file_offset,
                             });
-                            pieces.releaseFileOffset(file_offset_opt.?);
+                            pieces.releaseFileOffset(file_offset);
                             continue;
                         }
 
-                        std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
-                        std.mem.copy(u8, file_buffer[file_offset_opt.?..], piece.data[0..]);
-                        pieces.commitFileOffset(file_offset_opt.?);
+                        std.debug.warn("{}\tWriting piece to disk: file_offset={} begin={} len={} total_len={}\n", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
+                        std.mem.copy(u8, file_buffer[file_offset .. file_offset + expected_len], piece.data[0..]);
+                        pieces.commitFileOffset(file_offset);
 
                         pieces.displayStats();
                         // TODO: check hashes
