@@ -129,6 +129,25 @@ pub const Pieces = struct {
             }
         }
     }
+
+    pub fn displayStats(self: *Pieces) void {
+        while (true) {
+            if (self.have_mutex.tryAcquire()) |lock1| {
+                defer lock1.release();
+                while (true) {
+                    if (self.piece_acquire_mutex.tryAcquire()) |lock2| {
+                        defer lock2.release();
+                        const have = self.have_file_offsets.items.len;
+                        const total = self.remaining_file_offsets.items.len + self.have_file_offsets.items.len;
+                        std.debug.warn("[{}/{}/{}] {d}%\n", .{ have, self.remaining_file_offsets.items.len, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+                        return;
+                    }
+                    std.time.sleep(1_000);
+                }
+            }
+            std.time.sleep(1_000);
+        }
+    }
 };
 
 const MessageRequest = struct { index: u32, begin: u32, length: u32 };
@@ -387,6 +406,8 @@ pub const Peer = struct {
                         std.debug.warn("{}\tWriting piece to disk: start={} begin={} len={} total_len={}\n", .{ self.address, start, piece.begin, n, file_buffer.len });
                         std.mem.copy(u8, file_buffer[file_offset_opt.?..], piece.data[0..]);
                         pieces.commitFileOffset(file_offset_opt.?);
+
+                        pieces.displayStats();
                         // TODO: check hashes
 
                         // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
