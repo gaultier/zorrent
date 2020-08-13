@@ -57,7 +57,6 @@ pub const Pieces = struct {
         while (i < file_len) : (i += block_len) {
             remaining_file_offsets.addOneAssumeCapacity().* = i;
         }
-        std.debug.warn("remaining_file_offsets len: {}\n", .{remaining_file_offsets.items.len});
 
         return Pieces{
             .seed = seed,
@@ -185,7 +184,7 @@ pub const Peer = struct {
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Interested));
         try self.socket.?.writeAll(msg[0..]);
 
-        std.debug.warn("{}\tInterested\n", .{self.address});
+        std.log.notice(.zorrent_lib, "{}\tInterested\n", .{self.address});
     }
 
     pub fn sendChoke(self: *Peer) !void {
@@ -195,7 +194,7 @@ pub const Peer = struct {
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Choke));
         try self.socket.?.writeAll(msg[0..]);
 
-        std.debug.warn("{}\tChoke\n", .{self.address});
+        std.log.notice(.zorrent_lib, "{}\tChoke\n", .{self.address});
     }
 
     pub fn sendPeerId(self: *Peer) !void {
@@ -208,7 +207,7 @@ pub const Peer = struct {
         std.debug.assert(n <= (block_len));
 
         const len = self.socket.?.read(payload[0..n]) catch |err| {
-            std.debug.warn("{}\t{}\n", .{ self.address, err });
+            std.log.err(.zorrent_lib, "{}\t{}\n", .{ self.address, err });
             switch (err) {
                 error.ConnectionResetByPeer => {
                     return 0;
@@ -237,9 +236,9 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), len);
 
-        std.debug.warn("{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len, len });
+        std.log.notice(.zorrent_lib, "{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len, len });
         try self.socket.?.writeAll(payload[0..]);
-        std.debug.warn("{}\tRequested piece: index={} begin={} file_offset={} piece_len={} block_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len, len });
+        std.log.notice(.zorrent_lib, "{}\tRequested piece: index={} begin={} file_offset={} piece_len={} block_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len, len });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
@@ -306,19 +305,19 @@ pub const Peer = struct {
     }
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
-        std.debug.warn("{}\tConnecting\n", .{self.address});
+        std.log.notice(.zorrent_lib, "{}\tConnecting\n", .{self.address});
         self.connect() catch |err| {
             switch (err) {
                 error.ConnectionTimedOut, error.ConnectionRefused => {
-                    std.debug.warn("{}\tFailed ({})\n", .{ self.address, err });
+                    std.log.err(.zorrent_lib, "{}\tFailed ({})\n", .{ self.address, err });
                     return;
                 },
                 else => return err,
             }
         };
-        std.debug.warn("{}\tConnected\n", .{self.address});
+        std.log.notice(.zorrent_lib, "{}\tConnected\n", .{self.address});
 
-        std.debug.warn("{}\tHandshaking\n", .{self.address});
+        std.log.notice(.zorrent_lib, "{}\tHandshaking\n", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
         var len: usize = try self.read(handshake_len);
@@ -330,7 +329,7 @@ pub const Peer = struct {
             len = try self.read(handshake_len);
         }
         self.recv_buffer.shrinkRetainingCapacity(0);
-        std.debug.warn("{}\tHandshaked\n", .{self.address});
+        std.log.notice(.zorrent_lib, "{}\tHandshaked\n", .{self.address});
 
         try self.sendInterested();
         try self.sendChoke();
@@ -385,7 +384,7 @@ pub const Peer = struct {
                             continue;
                         }
 
-                        std.debug.warn("{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}\n", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
+                        std.log.debug(.zorrent_lib, "{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}\n", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
                         std.mem.copy(u8, file_buffer[file_offset .. file_offset + expected_len], piece.data[0..]);
                         pieces.commitFileOffset(file_offset);
 
@@ -414,12 +413,10 @@ pub const Peer = struct {
                     else => {},
                 }
             } else {
-                std.debug.warn("{}\tNo message choked={} requests_in_flight={}\n", .{ self.address, choked, requests_in_flight });
                 std.time.sleep(500_000_000);
             }
 
             if (pieces.isFinished()) {
-                std.debug.warn("{}\tFinished\n", .{self.address});
                 return;
             }
 
@@ -651,9 +648,9 @@ pub const TorrentFile = struct {
     }
 
     fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
-        std.debug.warn("Tracker {}: trying to contact...\n", .{url});
+        std.log.notice(.zorrent_lib, "Tracker {}: trying to contact...\n", .{url});
         var tracker_response = try self.queryAnnounceUrl(url, allocator);
-        std.debug.warn("Tracker {} replied successfuly\n", .{url});
+        std.log.notice(.zorrent_lib, "Tracker {} replied successfuly\n", .{url});
 
         var dict = tracker_response.root.Object;
 
@@ -682,7 +679,7 @@ pub const TorrentFile = struct {
                     const peer = try Peer.init(address, allocator);
 
                     if (try addUniquePeer(peers, peer)) {
-                        std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
+                        std.log.notice(.zorrent_lib, "Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
                     }
 
                     i += 6;
@@ -698,7 +695,7 @@ pub const TorrentFile = struct {
 
                     const peer = try Peer.init(address, allocator);
                     if (try addUniquePeer(peers, peer)) {
-                        std.debug.warn("Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
+                        std.log.notice(.zorrent_lib, "Tracker {}: new peer {} total_peers_count={}\n", .{ url, address, peers.items.len });
                     }
                 }
             },
