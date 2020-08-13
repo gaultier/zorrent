@@ -402,7 +402,7 @@ pub const Peer = struct {
 
                         // Malformed piece, skip
                         if (actual_piece_index != expected_piece_index or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
-                            std.debug.warn("{}\tMalformed piece: index={} begin={} expected_piece_index={} requested_file_offset={}\n", .{
+                            std.debug.warn("{}\tMalformed block: index={} begin={} expected_piece_index={} requested_file_offset={}\n", .{
                                 self.address,         piece.index, piece.begin,
                                 expected_piece_index, file_offset,
                             });
@@ -410,7 +410,7 @@ pub const Peer = struct {
                             continue;
                         }
 
-                        std.debug.warn("{}\tWriting piece to disk: file_offset={} begin={} len={} total_len={}\n", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
+                        std.debug.warn("{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}\n", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
                         std.mem.copy(u8, file_buffer[file_offset .. file_offset + expected_len], piece.data[0..]);
                         pieces.commitFileOffset(file_offset);
 
