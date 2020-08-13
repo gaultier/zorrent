@@ -757,7 +757,7 @@ pub const TorrentFile = struct {
             null,
             self.length_bytes_count,
             std.os.PROT_READ | std.os.PROT_WRITE,
-            std.os.MAP_FILE | std.os.MAP_PRIVATE,
+            std.os.MAP_FILE | std.os.MAP_SHARED,
             fd,
             0,
         );
