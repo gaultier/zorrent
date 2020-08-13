@@ -139,7 +139,7 @@ pub const Pieces = struct {
                         defer lock2.release();
                         const have = self.have_file_offsets.items.len;
                         const total = self.remaining_file_offsets.items.len + self.have_file_offsets.items.len;
-                        std.debug.warn("[{}/{}/{}] {d}%\n", .{ have, self.remaining_file_offsets.items.len, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+                        std.debug.warn("[Have/Remaining/Total: {}/{}/{}] {d}%\n", .{ have, self.remaining_file_offsets.items.len, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
                         return;
                     }
                     std.time.sleep(1_000);
@@ -247,8 +247,10 @@ pub const Peer = struct {
         return len;
     }
 
-    pub fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32) !void {
+    pub fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32, total_len: usize) !void {
         const piece_index: u32 = @intCast(u32, file_offset / piece_len);
+        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece_index) * @as(usize, piece_len));
+        const len = @intCast(u32, std.math.min(block_len, total_len - (piece_index * piece_len + begin)));
 
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
@@ -257,13 +259,12 @@ pub const Peer = struct {
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
-        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece_index) * @as(usize, piece_len));
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
-        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), block_len);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), len);
 
-        std.debug.warn("{}\tRequest piece: index={} begin={} file_offset={} piece_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len });
+        std.debug.warn("{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len, len });
         try self.socket.?.writeAll(payload[0..]);
-        std.debug.warn("{}\tRequested piece: index={} begin={} file_offset={} piece_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len });
+        std.debug.warn("{}\tRequested piece: index={} begin={} file_offset={} piece_len={} block_len={}\n", .{ self.address, piece_index, begin, file_offset, piece_len, len });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
@@ -432,6 +433,7 @@ pub const Peer = struct {
                     else => {},
                 }
             } else {
+                std.debug.warn("{}\tNo message choked={} requests_in_flight={}\n", .{ self.address, choked, requests_in_flight });
                 std.time.sleep(500_000_000);
             }
 
@@ -443,10 +445,11 @@ pub const Peer = struct {
             if (!choked and requests_in_flight < max_requests_in_flight) {
                 file_offset_opt = pieces.acquireFileOffset();
                 if (file_offset_opt == null) {
+                    std.debug.warn("{}\tNo file_offset_opt choked={} requests_in_flight={}\n", .{ self.address, choked, requests_in_flight });
                     std.time.sleep(100_000_000);
                     continue;
                 }
-                try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len));
+                try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len), torrent_file.length_bytes_count);
                 requests_in_flight += 1;
             }
         }
