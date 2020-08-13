@@ -120,7 +120,7 @@ pub const Pieces = struct {
         const have = self.have_count.get();
         const want = self.want_count.get();
         const total = want + have;
-        std.debug.warn("[Have/Remaining/Total: {}/{}/{}] {d}%\n", .{ have, want, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+        std.log.info(.zorrent_lib, "[Have/Remaining/Total: {}/{}/{}] {d:.2}%\n", .{ have, want, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
         return;
     }
 };
