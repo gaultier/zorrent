@@ -43,7 +43,8 @@ pub const Pieces = struct {
     piece_acquire_mutex: std.Mutex,
     have_mutex: std.Mutex,
     have_file_offsets: std.ArrayList(usize),
-    want_len: usize,
+    have_count: std.atomic.Int(usize),
+    want_count: std.atomic.Int(usize),
 
     pub fn init(file_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var buf: [8]u8 = undefined;
@@ -70,7 +71,8 @@ pub const Pieces = struct {
             .piece_acquire_mutex = std.Mutex{},
             .have_mutex = std.Mutex{},
             .have_file_offsets = have_file_offsets,
-            .want_len = remaining_file_offsets.items.len,
+            .have_count = std.atomic.Int(usize).init(0),
+            .want_count = std.atomic.Int(usize).init(remaining_file_offsets.items.len),
         };
     }
 
@@ -89,6 +91,9 @@ pub const Pieces = struct {
                 const i = self.prng.random.uintLessThan(usize, self.remaining_file_offsets.items.len);
                 const file_offset = self.remaining_file_offsets.items[i];
                 _ = self.remaining_file_offsets.swapRemove(i);
+
+                _ = self.want_count.decr();
+
                 return file_offset;
             }
             std.time.sleep(1_000);
@@ -101,6 +106,7 @@ pub const Pieces = struct {
             if (self.have_mutex.tryAcquire()) |lock| {
                 defer lock.release();
                 self.have_file_offsets.addOneAssumeCapacity().* = file_offset;
+                _ = self.have_count.incr();
                 return;
             }
             std.time.sleep(1_000);
@@ -113,7 +119,7 @@ pub const Pieces = struct {
         while (trial < 20) : (trial += 1) {
             if (self.have_mutex.tryAcquire()) |lock| {
                 defer lock.release();
-                return (self.have_file_offsets.items.len == self.want_len);
+                return (self.have_file_offsets.items.len == self.want_count.get());
             }
             std.time.sleep(1_000);
         }
@@ -126,27 +132,17 @@ pub const Pieces = struct {
                 defer lock.release();
 
                 self.remaining_file_offsets.appendAssumeCapacity(file_offset);
+                _ = self.want_count.incr();
             }
         }
     }
 
     pub fn displayStats(self: *Pieces) void {
-        while (true) {
-            if (self.have_mutex.tryAcquire()) |lock1| {
-                defer lock1.release();
-                while (true) {
-                    if (self.piece_acquire_mutex.tryAcquire()) |lock2| {
-                        defer lock2.release();
-                        const have = self.have_file_offsets.items.len;
-                        const total = self.remaining_file_offsets.items.len + self.have_file_offsets.items.len;
-                        std.debug.warn("[Have/Remaining/Total: {}/{}/{}] {d}%\n", .{ have, self.remaining_file_offsets.items.len, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
-                        return;
-                    }
-                    std.time.sleep(1_000);
-                }
-            }
-            std.time.sleep(1_000);
-        }
+        const have = self.have_count.get();
+        const want = self.want_count.get();
+        const total = want + have;
+        std.debug.warn("[Have/Remaining/Total: {}/{}/{}] {d}%\n", .{ have, want, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+        return;
     }
 };
 
