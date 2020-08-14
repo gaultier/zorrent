@@ -36,7 +36,6 @@ pub const PieceStatus = enum(u2) {
 };
 
 pub const Pieces = struct {
-    seed: u64,
     prng: std.rand.DefaultPrng,
     remaining_file_offsets: std.ArrayList(usize),
     allocator: *std.mem.Allocator,
@@ -59,7 +58,6 @@ pub const Pieces = struct {
         }
 
         return Pieces{
-            .seed = seed,
             .remaining_file_offsets = remaining_file_offsets,
             .allocator = allocator,
             .prng = std.rand.DefaultPrng.init(seed),
@@ -99,7 +97,7 @@ pub const Pieces = struct {
         _ = self.have_count.incr();
     }
 
-    // FIXME: finished iff all pieces arrived (and hash is ok)
+    // FIXME: finished off all pieces arrived (and hash is ok)
     pub fn isFinished(self: *Pieces) bool {
         return self.init_want_len == self.have_count.get();
     }

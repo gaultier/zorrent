@@ -2,7 +2,7 @@ const zorrent = @import("zorrent");
 const std = @import("std");
 
 pub const io_mode = .evented;
-pub const log_level: std.log.Level = .info;
+pub const log_level: std.log.Level = .debug;
 
 pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
