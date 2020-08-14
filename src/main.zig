@@ -346,6 +346,8 @@ pub const Peer = struct {
         var requests_in_flight: usize = 0;
         const max_requests_in_flight: usize = 1;
         var file_offset_opt: ?usize = null;
+        var remote_have = std.BufSet.init(self.allocator);
+        defer remote_have.deinit();
 
         while (true) {
             const message = self.parseMessage() catch |err| {
@@ -361,6 +363,11 @@ pub const Peer = struct {
                 switch (msg) {
                     Message.Unchoke => choked = false,
                     Message.Choke => choked = true,
+                    Message.Have => |piece_index| {
+                        var bytes = try self.allocator.create([4]u8);
+                        std.mem.copy(u8, bytes[0..], @bitCast([4]u8, piece_index)[0..]);
+                        try remote_have.put(bytes[0..]);
+                    },
                     Message.Bitfield => |bitfield| {
                         defer self.allocator.free(bitfield);
                         // hexDump(bitfield);
