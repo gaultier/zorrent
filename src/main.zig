@@ -581,7 +581,8 @@ pub const TorrentFile = struct {
         var curl_res: c.CURLcode = undefined;
         curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_global_init() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlInitFailed;
         }
         defer c.curl_global_cleanup();
@@ -590,7 +591,8 @@ pub const TorrentFile = struct {
         var headers: [*c]c.curl_slist = null;
 
         curl = c.curl_easy_init() orelse {
-            _ = c.printf("curl_easy_init() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlInitFailed;
         };
         defer c.curl_easy_cleanup(curl);
@@ -598,41 +600,47 @@ pub const TorrentFile = struct {
         // url
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
         const timeout_seconds: usize = 10;
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_TIMEOUT, timeout_seconds);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
         const follow_redirect_enabled: usize = 1;
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_FOLLOWLOCATION, follow_redirect_enabled);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
         var res_body = std.ArrayList(u8).init(allocator);
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_easy_setopt() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
         // perform the call
         curl_res = c.curl_easy_perform(curl);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            _ = c.printf("curl_easy_perform() failed: %s\n", c.curl_easy_strerror(curl_res));
+            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
             return error.CurlPerform;
         }
 
