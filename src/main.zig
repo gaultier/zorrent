@@ -82,7 +82,18 @@ pub const Pieces = struct {
 
                 const i = self.prng.random.uintLessThan(usize, self.remaining_file_offsets.items.len);
                 const file_offset = self.remaining_file_offsets.items[i];
-                _ = self.remaining_file_offsets.swapRemove(i);
+
+                // Manual swap remove
+                const old_capacity = self.remaining_file_offsets.capacity;
+                {
+                    const len = self.remaining_file_offsets.items.len;
+                    if (self.remaining_file_offsets.items.len - 1 != i) {
+                        self.remaining_file_offsets.items[i] = self.remaining_file_offsets.items[len - 1];
+                    }
+                    self.remaining_file_offsets.items[len - 1] = undefined;
+                    self.remaining_file_offsets.shrinkRetainingCapacity(len - 1);
+                }
+                std.debug.assert(old_capacity == self.remaining_file_offsets.capacity);
 
                 _ = self.want_count.decr();
 
