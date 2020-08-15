@@ -279,7 +279,15 @@ pub const Peer = struct {
             .Interested => Message.Interested,
             .Uninterested => Message.Uninterested,
             .Have => Message{ .Have = std.mem.readIntSliceBig(u32, self.recv_buffer.items[1..5]) },
-            .Bitfield => Message{ .Bitfield = try self.allocator.dupe(u8, self.recv_buffer.items[1..announced_len]) },
+            .Bitfield => blk: {
+                var bytes = std.ArrayList(u8).init(self.allocator);
+                try bytes.ensureCapacity(self.recv_buffer.items.len - 1);
+                for (self.recv_buffer.items[1..]) |have| {
+                    const native_have = std.mem.bigToNative(u8, have);
+                    bytes.addOneAssumeCapacity().* = native_have;
+                }
+                break :blk Message{ .Bitfield = bytes.toOwnedSlice() };
+            },
             .Request => Message{
                 .Request = MessageRequest{
                     .index = std.mem.readIntSliceBig(u32, self.recv_buffer.items[1..5]),
@@ -373,7 +381,9 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
 
-                        remote_have.items[byte_index] &= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}\n", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
+                        remote_have.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}\n", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
                         if (bitfield.len > remote_have.items.len) {
@@ -381,8 +391,9 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
-                            const native_have = std.mem.bigToNative(u8, have);
-                            remote_have.items[i] &= native_have;
+                            std.log.debug(.zorrent_lib, "{}\tBitfield 1/2: have={} i={} remote_have[]={}\n", .{ self.address, have, i, remote_have.items[i] });
+                            remote_have.items[i] |= have;
+                            std.log.debug(.zorrent_lib, "{}\tBitfield 2/2: have={} i={} remote_have[]={}\n", .{ self.address, have, i, remote_have.items[i] });
                         }
                         defer self.allocator.free(bitfield);
                     },
