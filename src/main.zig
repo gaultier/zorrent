@@ -73,7 +73,8 @@ pub const Pieces = struct {
         self.remaining_file_offsets.deinit();
     }
 
-    pub fn acquireFileOffset(self: *Pieces) ?usize {
+    pub fn acquireFileOffset(self: *Pieces, have_bitmask: []const u8) ?usize {
+        // TODO: use have_bitmask
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
@@ -458,7 +459,7 @@ pub const Peer = struct {
             }
 
             if (!choked and requests_in_flight < max_requests_in_flight) {
-                file_offset_opt = pieces.acquireFileOffset();
+                file_offset_opt = pieces.acquireFileOffset(remote_have);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
                     continue;
