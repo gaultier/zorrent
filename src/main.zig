@@ -346,15 +346,18 @@ pub const Peer = struct {
         var requests_in_flight: usize = 0;
         const max_requests_in_flight: usize = 1;
         var file_offset_opt: ?usize = null;
-        var remote_have = std.BufSet.init(self.allocator);
+        var remote_have = std.ArrayList(u8).init(self.allocator);
+        try remote_have.appendNTimes(0, 1 + pieces_len / 8);
         defer remote_have.deinit();
+        errdefer {
+            if (file_offset_opt) |file_offset| {
+                pieces.releaseFileOffset(file_offset);
+            }
+        }
 
         while (true) {
             const message = self.parseMessage() catch |err| {
                 std.log.err(.zorrent_lib, "{}\tError parsing message: {}", .{ self.address, err });
-                if (file_offset_opt) |file_offset| {
-                    pieces.releaseFileOffset(file_offset);
-                }
                 return err;
             };
             if (message) |msg| {
@@ -364,13 +367,24 @@ pub const Peer = struct {
                     Message.Unchoke => choked = false,
                     Message.Choke => choked = true,
                     Message.Have => |piece_index| {
-                        var bytes = try self.allocator.create([4]u8);
-                        std.mem.copy(u8, bytes[0..], @bitCast([4]u8, piece_index)[0..]);
-                        try remote_have.put(bytes[0..]);
+                        const byte_index: u32 = piece_index / 8;
+                        if (byte_index >= remote_have.items.len) {
+                            std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece_index, pieces_len });
+                            return error.InvalidMessage;
+                        }
+
+                        remote_have.items[byte_index] &= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
                     },
                     Message.Bitfield => |bitfield| {
+                        if (bitfield.len > remote_have.items.len) {
+                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have.items.len });
+                            return error.InvalidMessage;
+                        }
+                        for (bitfield) |have, i| {
+                            const native_have = std.mem.bigToNative(u8, have);
+                            remote_have.items[i] &= native_have;
+                        }
                         defer self.allocator.free(bitfield);
-                        // hexDump(bitfield);
                     },
                     Message.Piece => |piece| {
                         if (file_offset_opt == null) continue;
