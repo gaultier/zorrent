@@ -459,7 +459,7 @@ pub const Peer = struct {
             }
 
             if (!choked and requests_in_flight < max_requests_in_flight) {
-                file_offset_opt = pieces.acquireFileOffset(remote_have);
+                file_offset_opt = pieces.acquireFileOffset(remote_have.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
                     continue;
