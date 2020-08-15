@@ -381,9 +381,9 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}\n", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
                         remote_have.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}\n", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
                         if (bitfield.len > remote_have.items.len) {
@@ -391,9 +391,9 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
-                            std.log.debug(.zorrent_lib, "{}\tBitfield 1/2: have={} i={} remote_have[]={}\n", .{ self.address, have, i, remote_have.items[i] });
+                            std.log.debug(.zorrent_lib, "{}\tBitfield 1/2: have={} i={} remote_have[]={}", .{ self.address, have, i, remote_have.items[i] });
                             remote_have.items[i] |= have;
-                            std.log.debug(.zorrent_lib, "{}\tBitfield 2/2: have={} i={} remote_have[]={}\n", .{ self.address, have, i, remote_have.items[i] });
+                            std.log.debug(.zorrent_lib, "{}\tBitfield 2/2: have={} i={} remote_have[]={}", .{ self.address, have, i, remote_have.items[i] });
                         }
                         defer self.allocator.free(bitfield);
                     },
