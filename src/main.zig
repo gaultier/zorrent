@@ -289,15 +289,7 @@ pub const Peer = struct {
             .Interested => Message.Interested,
             .Uninterested => Message.Uninterested,
             .Have => Message{ .Have = std.mem.readIntSliceBig(u32, self.recv_buffer.items[1..5]) },
-            .Bitfield => blk: {
-                var bytes = std.ArrayList(u8).init(self.allocator);
-                try bytes.ensureCapacity(self.recv_buffer.items.len - 1);
-                for (self.recv_buffer.items[1..]) |have| {
-                    const native_have = std.mem.bigToNative(u8, have);
-                    bytes.addOneAssumeCapacity().* = native_have;
-                }
-                break :blk Message{ .Bitfield = bytes.toOwnedSlice() };
-            },
+            .Bitfield => Message{ .Bitfield = try self.allocator.dupe(u8, self.recv_buffer.items[1..]) },
             .Request => Message{
                 .Request = MessageRequest{
                     .index = std.mem.readIntSliceBig(u32, self.recv_buffer.items[1..5]),
@@ -500,11 +492,14 @@ fn markPiecesAsHaveFromBitfield(remote_have_file_offsets: *std.ArrayList(usize),
 
     var j: u8 = 0;
     while (j < 8) : (j += 1) {
-        const shift: u3 = @intCast(u3, j);
-        std.debug.warn("markPiecesAsHaveFromBitfield: j={} have_bitfield={}\n", .{ j, have_bitfield });
-        if ((have_bitfield & (@as(u8, 1) << shift)) == 0) continue;
-        // TODO: check max bitfield len < u32 capacity
+        const k: u3 = @as(u3, 7) - @intCast(u3, j);
+        const shift: u3 = @as(u3, k);
         const piece: u32 = @intCast(u32, have_bitfield_index) * 8 + j;
+        const has_piece_mask = (have_bitfield & (@as(u8, 1) << shift));
+
+        if (has_piece_mask == 0) continue;
+
+        // TODO: check max bitfield len < u32 capacity
 
         try markFileOffsetAsHaveFromPiece(remote_have_file_offsets, piece, piece_len, total_len);
     }
