@@ -10,13 +10,6 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
     return size * nmemb;
 }
 
-pub fn hexDump(bytes: []const u8) void {
-    for (bytes) |b| {
-        std.debug.warn("{X:0<2} ", .{b});
-    }
-    std.debug.warn("\n", .{});
-}
-
 pub const MessageId = enum(u8) {
     Choke = 0,
     Unchoke = 1,
@@ -792,7 +785,7 @@ pub const TorrentFile = struct {
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
             self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.debug.warn("Tracker {}: {}\n", .{ url, err });
+                std.log.warn(.zorrent_lib, "Tracker {}: {}\n", .{ url, err });
                 continue;
             };
         }
