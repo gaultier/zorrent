@@ -73,23 +73,30 @@ pub const Pieces = struct {
         self.remaining_file_offsets.deinit();
     }
 
-    pub fn acquireFileOffset(self: *Pieces, have_bitmask: []const u8) ?usize {
-        // TODO: use have_bitmask
+    pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets: []const usize) ?usize {
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
                 if (self.remaining_file_offsets.items.len == 0) return null;
 
-                const i = self.prng.random.uintLessThan(usize, self.remaining_file_offsets.items.len);
-                const file_offset = self.remaining_file_offsets.items[i];
+                var file_offset_i: ?usize = null;
+                outer: for (remote_have_file_offsets) |remote_have| {
+                    for (self.remaining_file_offsets.items) |want, i| {
+                        if (remote_have == want) {
+                            file_offset_i = i;
+                            break :outer;
+                        }
+                    }
+                }
+                if (file_offset_i == null) return null;
 
                 // Manual swap remove
                 const old_capacity = self.remaining_file_offsets.capacity;
                 {
                     const len = self.remaining_file_offsets.items.len;
-                    if (self.remaining_file_offsets.items.len - 1 != i) {
-                        self.remaining_file_offsets.items[i] = self.remaining_file_offsets.items[len - 1];
+                    if (self.remaining_file_offsets.items.len - 1 != file_offset_i.?) {
+                        self.remaining_file_offsets.items[file_offset_i.?] = self.remaining_file_offsets.items[len - 1];
                     }
                     self.remaining_file_offsets.items[len - 1] = undefined;
                     self.remaining_file_offsets.shrinkRetainingCapacity(len - 1);
@@ -98,7 +105,7 @@ pub const Pieces = struct {
 
                 _ = self.want_count.decr();
 
-                return file_offset;
+                return self.remaining_file_offsets.items[file_offset_i.?];
             }
             std.time.sleep(1_000);
         }
@@ -464,7 +471,7 @@ pub const Peer = struct {
             }
 
             if (!choked and requests_in_flight < max_requests_in_flight) {
-                file_offset_opt = pieces.acquireFileOffset(remote_have_pieces.items[0..]);
+                file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
                     continue;
