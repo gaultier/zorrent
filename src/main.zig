@@ -81,8 +81,8 @@ pub const Pieces = struct {
                 if (self.remaining_file_offsets.items.len == 0) return null;
 
                 var file_offset_i: ?usize = null;
-                outer: for (remote_have_file_offsets) |remote_have| {
-                    for (self.remaining_file_offsets.items) |want, i| {
+                outer: for (self.remaining_file_offsets.items) |want, i| {
+                    for (remote_have_file_offsets) |remote_have| {
                         if (remote_have == want) {
                             file_offset_i = i;
                             break :outer;
@@ -116,7 +116,7 @@ pub const Pieces = struct {
         _ = self.have_count.incr();
     }
 
-    // FIXME: finished off all pieces arrived (and hash is ok)
+    // TODO: check hash
     pub fn isFinished(self: *Pieces) bool {
         return self.init_want_len == self.have_count.get();
     }
