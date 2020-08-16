@@ -364,9 +364,9 @@ pub const Peer = struct {
         var file_offset_opt: ?usize = null;
 
         // bitfield
-        var remote_have_pieces = std.ArrayList(u8).init(self.allocator);
-        try remote_have_pieces.appendNTimes(0, 1 + pieces_len / 8);
-        defer remote_have_pieces.deinit();
+        var remote_have_pieces_bitfield = std.ArrayList(u8).init(self.allocator);
+        try remote_have_pieces_bitfield.appendNTimes(0, 1 + pieces_len / 8);
+        defer remote_have_pieces_bitfield.deinit();
 
         // TODO: use
         var remote_have_file_offsets = std.ArrayList(usize).init(self.allocator);
@@ -389,32 +389,23 @@ pub const Peer = struct {
                     Message.Choke => choked = true,
                     Message.Have => |piece| {
                         const byte_index: u32 = piece / 8;
-                        if (byte_index >= remote_have_pieces.items.len) {
+                        if (byte_index >= remote_have_pieces_bitfield.items.len) {
                             std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece, pieces_len });
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece, byte_index, remote_have_pieces.items[byte_index] });
-                        remote_have_pieces.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece, byte_index, remote_have_pieces.items[byte_index] });
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
+                        remote_have_pieces_bitfield.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
-                        if (bitfield.len > remote_have_pieces.items.len) {
-                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have_pieces.items.len });
+                        if (bitfield.len > remote_have_pieces_bitfield.items.len) {
+                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have_pieces_bitfield.items.len });
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
                             std.log.debug(.zorrent_lib, "{}\tBitfield: have={} i={}", .{ self.address, have, i });
-                            remote_have_pieces.items[i] |= have;
-
-                            var j: u8 = 0;
-                            while (j < 8) : (j += 1) {
-                                const shift: u3 = @intCast(u3, j);
-                                if ((have & (@as(u8, 1) << shift)) == 0) continue;
-                                // TODO: check max bitfield len < u32 capacity
-                                const piece: u32 = @intCast(u32, i) * 8 + j;
-                                try markFileOffsetAsHaveFromPiece(&remote_have_file_offsets, piece, torrent_file.piece_len);
-                            }
+                            try markPieceAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i);
                         }
                         defer self.allocator.free(bitfield);
                     },
@@ -498,6 +489,19 @@ fn markFileOffsetAsHaveFromPiece(remote_have_file_offsets: *std.ArrayList(usize)
 
     while (file_offset < piece * (1 + piece_len)) : (file_offset += block_len) {
         remote_have_file_offsets.appendAssumeCapacity(file_offset);
+    }
+}
+
+fn markPieceAsHaveFromBitfield(remote_have_file_offsets: *std.ArrayList(usize), remote_have_pieces_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize) !void {
+    remote_have_pieces_bitfield.items[have_bitfield_index] |= have_bitfield;
+
+    var j: u8 = 0;
+    while (j < 8) : (j += 1) {
+        const shift: u3 = @intCast(u3, j);
+        if ((have_bitfield & (@as(u8, 1) << shift)) == 0) continue;
+        // TODO: check max bitfield len < u32 capacity
+        const piece: u32 = @intCast(u32, have_bitfield_index) * 8 + j;
+        try markFileOffsetAsHaveFromPiece(remote_have_file_offsets, piece, piece_len);
     }
 }
 
