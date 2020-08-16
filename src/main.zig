@@ -455,6 +455,7 @@ pub const Peer = struct {
             }
 
             if (pieces.isFinished()) {
+                std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                 return;
             }
 
