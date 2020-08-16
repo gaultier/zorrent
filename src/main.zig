@@ -363,6 +363,11 @@ pub const Peer = struct {
         };
 
         while (true) {
+            if (pieces.isFinished()) {
+                std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
+                return;
+            }
+
             const message = self.parseMessage() catch |err| {
                 std.log.err(.zorrent_lib, "{}\tError parsing message: {}", .{ self.address, err });
                 return err;
@@ -452,11 +457,6 @@ pub const Peer = struct {
                 }
             } else {
                 std.time.sleep(500_000_000);
-            }
-
-            if (pieces.isFinished()) {
-                std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
-                return;
             }
 
             if (!choked and requests_in_flight < max_requests_in_flight) {
