@@ -121,6 +121,7 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
+                std.log.debug("{}\tAn error happened, releasing file_offset={} want_file_offsets={}", .{ self.address, file_offset, self.want_file_offsets });
                 self.want_file_offsets.appendAssumeCapacity(file_offset);
                 _ = self.want_count.incr();
             }
