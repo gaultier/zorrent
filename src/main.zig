@@ -358,11 +358,9 @@ pub const Peer = struct {
         var remote_have_pieces = std.ArrayList(u8).init(self.allocator);
         try remote_have_pieces.appendNTimes(0, 1 + pieces_len / 8);
         defer remote_have_pieces.deinit();
-        errdefer {
-            if (file_offset_opt) |file_offset| {
-                pieces.releaseFileOffset(file_offset);
-            }
-        }
+        errdefer if (file_offset_opt) |file_offset| {
+            pieces.releaseFileOffset(file_offset);
+        };
 
         while (true) {
             const message = self.parseMessage() catch |err| {
