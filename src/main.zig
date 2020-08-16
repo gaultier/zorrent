@@ -81,7 +81,6 @@ pub const Pieces = struct {
                 if (self.want_file_offsets.items.len == 0) return null;
 
                 var file_offset_i: ?usize = null;
-                std.debug.warn("acquireFileOffset 1/2: want={} remote_have={}\n", .{ self.want_file_offsets.items.len, remote_have_file_offsets.len });
                 outer: for (self.want_file_offsets.items) |want, i| {
                     for (remote_have_file_offsets) |remote_have| {
                         if (remote_have == want) {
@@ -90,8 +89,9 @@ pub const Pieces = struct {
                         }
                     }
                 }
-                std.debug.warn("acquireFileOffset 2/2: want={} remote_have={} file_offset_i={}\n", .{ self.want_file_offsets.items.len, remote_have_file_offsets.len, file_offset_i });
                 if (file_offset_i == null) return null;
+
+                const file_offset = self.want_file_offsets.items[file_offset_i.?];
 
                 // Manual swap remove
                 const old_capacity = self.want_file_offsets.capacity;
@@ -107,7 +107,7 @@ pub const Pieces = struct {
 
                 _ = self.want_count.decr();
 
-                return self.want_file_offsets.items[file_offset_i.?];
+                return file_offset;
             }
             std.time.sleep(1_000);
         }
