@@ -390,8 +390,10 @@ pub const Peer = struct {
                             std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have_pieces_bitfield.items.len });
                             return error.InvalidMessage;
                         }
+
+                        std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
+
                         for (bitfield) |have, i| {
-                            std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={} i={}", .{ self.address, bitfield.len, have, i });
                             try markPiecesAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
                         defer self.allocator.free(bitfield);
@@ -785,7 +787,7 @@ pub const TorrentFile = struct {
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
             self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.log.warn(.zorrent_lib, "Tracker {}: {}\n", .{ url, err });
+                std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, err });
                 continue;
             };
         }
