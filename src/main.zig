@@ -404,16 +404,17 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
-                            std.log.debug(.zorrent_lib, "{}\tBitfield: have={} i={} remote_have_pieces[]={}", .{ self.address, have, i, remote_have_pieces.items[i] });
+                            std.log.debug(.zorrent_lib, "{}\tBitfield: have={} i={}", .{ self.address, have, i });
                             remote_have_pieces.items[i] |= have;
 
                             var j: u8 = 0;
                             while (j < 8) : (j += 1) {
-                                if ((have & j) == 0) continue;
+                                const shift: u3 = @intCast(u3, j);
+                                if ((have & (@as(u8, 1) << shift)) == 0) continue;
                                 // TODO: check max bitfield len < u32 capacity
                                 const piece_index: u32 = @intCast(u32, i) * 8 + j;
                                 var file_offset: usize = piece_index * torrent_file.piece_len;
-                                while (file_offset < piece_index + torrent_file.piece_len) : (file_offset += block_len) {
+                                while (file_offset < piece_index * (1 + torrent_file.piece_len)) : (file_offset += block_len) {
                                     try remote_have_file_offsets.append(file_offset);
                                 }
                             }
