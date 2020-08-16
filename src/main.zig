@@ -382,7 +382,7 @@ pub const Peer = struct {
 
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                         remote_have_pieces_bitfield.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
-                        try markFileOffsetAsHaveFromPiece(&remote_have_file_offsets, piece, torrent_file.piece_len, torrent_file.length_bytes_count);
+                        try markFileOffsetAsHaveFromPiece(&remote_have_file_offsets, piece, torrent_file.piece_len, torrent_file.total_len);
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
@@ -392,7 +392,7 @@ pub const Peer = struct {
                         }
                         for (bitfield) |have, i| {
                             std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={} i={}", .{ self.address, bitfield.len, have, i });
-                            try markPiecesAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.length_bytes_count);
+                            try markPiecesAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
                         defer self.allocator.free(bitfield);
                     },
@@ -404,7 +404,7 @@ pub const Peer = struct {
 
                         const expected_piece: u32 = @intCast(u32, file_offset / torrent_file.piece_len);
                         const expected_begin: u32 = @intCast(u32, file_offset - @as(usize, expected_piece) * @as(usize, torrent_file.piece_len));
-                        const expected_len = @intCast(u32, std.math.min(block_len, torrent_file.length_bytes_count - (expected_piece * torrent_file.piece_len + expected_begin)));
+                        const expected_len = @intCast(u32, std.math.min(block_len, torrent_file.total_len - (expected_piece * torrent_file.piece_len + expected_begin)));
                         const actual_piece = piece.index;
                         const actual_begin = piece.begin;
                         const actual_len = piece.data.len;
@@ -462,7 +462,7 @@ pub const Peer = struct {
                     std.time.sleep(100_000_000);
                     continue;
                 }
-                try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len), torrent_file.length_bytes_count);
+                try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
                 requests_in_flight += 1;
             }
         }
@@ -511,7 +511,7 @@ pub const DownloadFile = struct {
 
 pub const TorrentFile = struct {
     announce_urls: [][]const u8,
-    length_bytes_count: usize,
+    total_len: usize,
     hash_info: [20]u8,
     downloadedBytesCount: usize,
     uploadedBytesCount: usize,
@@ -589,7 +589,7 @@ pub const TorrentFile = struct {
 
         return TorrentFile{
             .announce_urls = owned_announce_urls.toOwnedSlice(),
-            .length_bytes_count = @intCast(usize, file_length.?),
+            .total_len = @intCast(usize, file_length.?),
             .hash_info = hash,
             .uploadedBytesCount = 0,
             .downloadedBytesCount = 0,
@@ -795,11 +795,11 @@ pub const TorrentFile = struct {
 
     pub fn openMmapFile(self: *TorrentFile) !DownloadFile {
         const fd = try std.os.open(self.path, std.os.O_CREAT | std.os.O_RDWR, 438);
-        try std.os.ftruncate(fd, self.length_bytes_count);
+        try std.os.ftruncate(fd, self.total_len);
 
         var data = try std.os.mmap(
             null,
-            self.length_bytes_count,
+            self.total_len,
             std.os.PROT_READ | std.os.PROT_WRITE,
             std.os.MAP_FILE | std.os.MAP_SHARED,
             fd,

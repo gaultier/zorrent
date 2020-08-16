@@ -24,7 +24,7 @@ pub fn main() anyerror!void {
     var download_file = try torrent_file.openMmapFile();
     defer download_file.deinit();
 
-    var pieces = try zorrent.Pieces.init(torrent_file.length_bytes_count, allocator);
+    var pieces = try zorrent.Pieces.init(torrent_file.total_len, allocator);
 
     for (peers) |*peer| {
         frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, download_file.data, &pieces);
