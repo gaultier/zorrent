@@ -3,7 +3,7 @@ Experimental Zig torrent library and client example program.
 
 ## ROADMAP
 
-- [ ] Smart piece request based on the bitfield/have peer messages
+- [x] Smart piece request based on the bitfield/have peer messages
 - [ ] Check pieces SHA1 hashes
 - [ ] Serve pieces
 - [ ] Support torrent with multiple files

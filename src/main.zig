@@ -786,16 +786,16 @@ pub const TorrentFile = struct {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
-        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
-        try peers.append(try Peer.init(local_address, allocator)); // FIXME
+        // const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
+        // try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
-        // for (self.announce_urls) |url| {
-        //     self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-        //         std.debug.warn("Tracker {}: {}\n", .{ url, err });
-        //         continue;
-        //     };
-        // }
+        for (self.announce_urls) |url| {
+            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
+                std.debug.warn("Tracker {}: {}\n", .{ url, err });
+                continue;
+            };
+        }
 
         return peers.toOwnedSlice();
     }
