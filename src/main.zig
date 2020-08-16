@@ -361,6 +361,7 @@ pub const Peer = struct {
         try remote_have_pieces.appendNTimes(0, 1 + pieces_len / 8);
         defer remote_have_pieces.deinit();
 
+        // TODO: use
         var remote_have_file_offsets = std.ArrayList(usize).init(self.allocator);
         defer remote_have_file_offsets.deinit();
 
