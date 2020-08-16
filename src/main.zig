@@ -81,6 +81,7 @@ pub const Pieces = struct {
                 if (self.want_file_offsets.items.len == 0) return null;
 
                 var file_offset_i: ?usize = null;
+                std.debug.warn("acquireFileOffset 1/2: want={} remote_have={}\n", .{ self.want_file_offsets.items.len, remote_have_file_offsets.len });
                 outer: for (self.want_file_offsets.items) |want, i| {
                     for (remote_have_file_offsets) |remote_have| {
                         if (remote_have == want) {
@@ -89,6 +90,7 @@ pub const Pieces = struct {
                         }
                     }
                 }
+                std.debug.warn("acquireFileOffset 2/2: want={} remote_have={} file_offset_i={}\n", .{ self.want_file_offsets.items.len, remote_have_file_offsets.len, file_offset_i });
                 if (file_offset_i == null) return null;
 
                 // Manual swap remove
@@ -368,7 +370,6 @@ pub const Peer = struct {
         try remote_have_pieces_bitfield.appendNTimes(0, 1 + pieces_len / 8);
         defer remote_have_pieces_bitfield.deinit();
 
-        // TODO: use
         var remote_have_file_offsets = std.ArrayList(usize).init(self.allocator);
         defer remote_have_file_offsets.deinit();
 
@@ -404,8 +405,8 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
-                            std.log.debug(.zorrent_lib, "{}\tBitfield: have={} i={}", .{ self.address, have, i });
-                            try markPieceAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i);
+                            std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={} i={}", .{ self.address, bitfield.len, have, i });
+                            try markPiecesAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.length_bytes_count);
                         }
                         defer self.allocator.free(bitfield);
                     },
@@ -482,26 +483,30 @@ pub const Peer = struct {
     }
 };
 
-fn markFileOffsetAsHaveFromPiece(remote_have_file_offsets: *std.ArrayList(usize), piece: u32, piece_len: usize) !void {
+fn markFileOffsetAsHaveFromPiece(remote_have_file_offsets: *std.ArrayList(usize), piece: u32, piece_len: usize, total_len: usize) !void {
     var file_offset: usize = piece * piece_len;
     const file_offset_to_add_count = piece_len / block_len;
     try remote_have_file_offsets.ensureCapacity(remote_have_file_offsets.items.len + file_offset_to_add_count);
 
-    while (file_offset < piece * (1 + piece_len)) : (file_offset += block_len) {
+    const size = std.math.min(total_len, (piece + 1) * piece_len);
+    while (file_offset < size) : (file_offset += block_len) {
+        std.debug.assert(file_offset < total_len);
         remote_have_file_offsets.appendAssumeCapacity(file_offset);
     }
 }
 
-fn markPieceAsHaveFromBitfield(remote_have_file_offsets: *std.ArrayList(usize), remote_have_pieces_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize) !void {
+fn markPiecesAsHaveFromBitfield(remote_have_file_offsets: *std.ArrayList(usize), remote_have_pieces_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) !void {
     remote_have_pieces_bitfield.items[have_bitfield_index] |= have_bitfield;
 
     var j: u8 = 0;
     while (j < 8) : (j += 1) {
         const shift: u3 = @intCast(u3, j);
+        std.debug.warn("markPiecesAsHaveFromBitfield: j={} have_bitfield={}\n", .{ j, have_bitfield });
         if ((have_bitfield & (@as(u8, 1) << shift)) == 0) continue;
         // TODO: check max bitfield len < u32 capacity
         const piece: u32 = @intCast(u32, have_bitfield_index) * 8 + j;
-        try markFileOffsetAsHaveFromPiece(remote_have_file_offsets, piece, piece_len);
+
+        try markFileOffsetAsHaveFromPiece(remote_have_file_offsets, piece, piece_len, total_len);
     }
 }
 
