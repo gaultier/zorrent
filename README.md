@@ -9,4 +9,5 @@ Experimental Zig torrent library and client example program.
 - [ ] Support torrent with multiple files
 - [ ] Add timeout to expire acquired file offset
 - [ ] Re-fetch piece if hash fails
+- [ ] Request pipelining
 
