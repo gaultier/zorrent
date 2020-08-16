@@ -355,9 +355,15 @@ pub const Peer = struct {
         var requests_in_flight: usize = 0;
         const max_requests_in_flight: usize = 1;
         var file_offset_opt: ?usize = null;
+
+        // bitfield
         var remote_have_pieces = std.ArrayList(u8).init(self.allocator);
         try remote_have_pieces.appendNTimes(0, 1 + pieces_len / 8);
         defer remote_have_pieces.deinit();
+
+        var remote_have_file_offsets = std.ArrayList(usize).init(self.allocator);
+        defer remote_have_file_offsets.deinit();
+
         errdefer if (file_offset_opt) |file_offset| {
             pieces.releaseFileOffset(file_offset);
         };
