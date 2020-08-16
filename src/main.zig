@@ -404,9 +404,19 @@ pub const Peer = struct {
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
-                            std.log.debug(.zorrent_lib, "{}\tBitfield 1/2: have={} i={} remote_have_pieces[]={}", .{ self.address, have, i, remote_have_pieces.items[i] });
+                            std.log.debug(.zorrent_lib, "{}\tBitfield: have={} i={} remote_have_pieces[]={}", .{ self.address, have, i, remote_have_pieces.items[i] });
                             remote_have_pieces.items[i] |= have;
-                            std.log.debug(.zorrent_lib, "{}\tBitfield 2/2: have={} i={} remote_have_pieces[]={}", .{ self.address, have, i, remote_have_pieces.items[i] });
+
+                            var j: u8 = 0;
+                            while (j < 8) : (j += 1) {
+                                if ((have & j) == 0) continue;
+                                // TODO: check max bitfield len < u32 capacity
+                                const piece_index: u32 = @intCast(u32, i) * 8 + j;
+                                var file_offset: usize = piece_index * torrent_file.piece_len;
+                                while (file_offset < piece_index + torrent_file.piece_len) : (file_offset += block_len) {
+                                    try remote_have_file_offsets.append(file_offset);
+                                }
+                            }
                         }
                         defer self.allocator.free(bitfield);
                     },
@@ -763,16 +773,16 @@ pub const TorrentFile = struct {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
-        //const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
-        //try peers.append(try Peer.init(local_address, allocator)); // FIXME
+        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
+        try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
-        for (self.announce_urls) |url| {
-            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.debug.warn("Tracker {}: {}\n", .{ url, err });
-                continue;
-            };
-        }
+        // for (self.announce_urls) |url| {
+        //     self.addPeersFromTracker(url, &peers, allocator) catch |err| {
+        //         std.debug.warn("Tracker {}: {}\n", .{ url, err });
+        //         continue;
+        //     };
+        // }
 
         return peers.toOwnedSlice();
     }
