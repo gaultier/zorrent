@@ -355,9 +355,9 @@ pub const Peer = struct {
         var requests_in_flight: usize = 0;
         const max_requests_in_flight: usize = 1;
         var file_offset_opt: ?usize = null;
-        var remote_have = std.ArrayList(u8).init(self.allocator);
-        try remote_have.appendNTimes(0, 1 + pieces_len / 8);
-        defer remote_have.deinit();
+        var remote_have_pieces = std.ArrayList(u8).init(self.allocator);
+        try remote_have_pieces.appendNTimes(0, 1 + pieces_len / 8);
+        defer remote_have_pieces.deinit();
         errdefer {
             if (file_offset_opt) |file_offset| {
                 pieces.releaseFileOffset(file_offset);
@@ -377,24 +377,24 @@ pub const Peer = struct {
                     Message.Choke => choked = true,
                     Message.Have => |piece_index| {
                         const byte_index: u32 = piece_index / 8;
-                        if (byte_index >= remote_have.items.len) {
+                        if (byte_index >= remote_have_pieces.items.len) {
                             std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece_index, pieces_len });
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
-                        remote_have.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have[]={}", .{ self.address, piece_index, byte_index, remote_have.items[byte_index] });
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece_index, byte_index, remote_have_pieces.items[byte_index] });
+                        remote_have_pieces.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece_index, byte_index, remote_have_pieces.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
-                        if (bitfield.len > remote_have.items.len) {
-                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have.items.len });
+                        if (bitfield.len > remote_have_pieces.items.len) {
+                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have_pieces.items.len });
                             return error.InvalidMessage;
                         }
                         for (bitfield) |have, i| {
-                            std.log.debug(.zorrent_lib, "{}\tBitfield 1/2: have={} i={} remote_have[]={}", .{ self.address, have, i, remote_have.items[i] });
-                            remote_have.items[i] |= have;
-                            std.log.debug(.zorrent_lib, "{}\tBitfield 2/2: have={} i={} remote_have[]={}", .{ self.address, have, i, remote_have.items[i] });
+                            std.log.debug(.zorrent_lib, "{}\tBitfield 1/2: have={} i={} remote_have_pieces[]={}", .{ self.address, have, i, remote_have_pieces.items[i] });
+                            remote_have_pieces.items[i] |= have;
+                            std.log.debug(.zorrent_lib, "{}\tBitfield 2/2: have={} i={} remote_have_pieces[]={}", .{ self.address, have, i, remote_have_pieces.items[i] });
                         }
                         defer self.allocator.free(bitfield);
                     },
@@ -459,7 +459,7 @@ pub const Peer = struct {
             }
 
             if (!choked and requests_in_flight < max_requests_in_flight) {
-                file_offset_opt = pieces.acquireFileOffset(remote_have.items[0..]);
+                file_offset_opt = pieces.acquireFileOffset(remote_have_pieces.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
                     continue;
