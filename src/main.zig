@@ -239,9 +239,9 @@ pub const Peer = struct {
     }
 
     pub fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32, total_len: usize) !void {
-        const piece_index: u32 = @intCast(u32, file_offset / piece_len);
-        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece_index) * @as(usize, piece_len));
-        const len = @intCast(u32, std.math.min(block_len, total_len - (piece_index * piece_len + begin)));
+        const piece: u32 = @intCast(u32, file_offset / piece_len);
+        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, piece_len));
+        const len = @intCast(u32, std.math.min(block_len, total_len - (piece * piece_len + begin)));
 
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
@@ -249,12 +249,12 @@ pub const Peer = struct {
 
         const tag: u8 = @enumToInt(MessageId.Request);
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &payload[4]), tag);
-        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece_index);
+        std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[5]), piece);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[9]), begin);
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), len);
 
         try self.socket.?.writeAll(payload[0..]);
-        std.log.debug(.zorrent_lib, "{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}", .{ self.address, piece_index, begin, file_offset, piece_len, len });
+        std.log.debug(.zorrent_lib, "{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}", .{ self.address, piece, begin, file_offset, piece_len, len });
     }
 
     pub fn parseMessage(self: *Peer) !?Message {
@@ -387,16 +387,16 @@ pub const Peer = struct {
                 switch (msg) {
                     Message.Unchoke => choked = false,
                     Message.Choke => choked = true,
-                    Message.Have => |piece_index| {
-                        const byte_index: u32 = piece_index / 8;
+                    Message.Have => |piece| {
+                        const byte_index: u32 = piece / 8;
                         if (byte_index >= remote_have_pieces.items.len) {
-                            std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece_index, pieces_len });
+                            std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece, pieces_len });
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece_index, byte_index, remote_have_pieces.items[byte_index] });
-                        remote_have_pieces.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece_index % 8)));
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece_index={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece_index, byte_index, remote_have_pieces.items[byte_index] });
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece, byte_index, remote_have_pieces.items[byte_index] });
+                        remote_have_pieces.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces[]={}", .{ self.address, piece, byte_index, remote_have_pieces.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
                         if (bitfield.len > remote_have_pieces.items.len) {
@@ -412,11 +412,8 @@ pub const Peer = struct {
                                 const shift: u3 = @intCast(u3, j);
                                 if ((have & (@as(u8, 1) << shift)) == 0) continue;
                                 // TODO: check max bitfield len < u32 capacity
-                                const piece_index: u32 = @intCast(u32, i) * 8 + j;
-                                var file_offset: usize = piece_index * torrent_file.piece_len;
-                                while (file_offset < piece_index * (1 + torrent_file.piece_len)) : (file_offset += block_len) {
-                                    try remote_have_file_offsets.append(file_offset);
-                                }
+                                const piece: u32 = @intCast(u32, i) * 8 + j;
+                                try markFileOffsetAsHaveFromPiece(&remote_have_file_offsets, piece, torrent_file.piece_len);
                             }
                         }
                         defer self.allocator.free(bitfield);
@@ -427,19 +424,19 @@ pub const Peer = struct {
                         requests_in_flight -= 1;
                         const file_offset = file_offset_opt.?;
 
-                        const expected_piece_index: u32 = @intCast(u32, file_offset / torrent_file.piece_len);
-                        const expected_begin: u32 = @intCast(u32, file_offset - @as(usize, expected_piece_index) * @as(usize, torrent_file.piece_len));
-                        const expected_len = @intCast(u32, std.math.min(block_len, torrent_file.length_bytes_count - (expected_piece_index * torrent_file.piece_len + expected_begin)));
-                        const actual_piece_index = piece.index;
+                        const expected_piece: u32 = @intCast(u32, file_offset / torrent_file.piece_len);
+                        const expected_begin: u32 = @intCast(u32, file_offset - @as(usize, expected_piece) * @as(usize, torrent_file.piece_len));
+                        const expected_len = @intCast(u32, std.math.min(block_len, torrent_file.length_bytes_count - (expected_piece * torrent_file.piece_len + expected_begin)));
+                        const actual_piece = piece.index;
                         const actual_begin = piece.begin;
                         const actual_len = piece.data.len;
                         const actual_file_offset = piece.index * torrent_file.piece_len + piece.begin;
 
                         // Malformed piece, skip
-                        if (actual_piece_index != expected_piece_index or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
-                            std.log.err(.zorrent_lib, "{}\tMalformed block: index={} begin={} expected_piece_index={} requested_file_offset={}", .{
-                                self.address,         piece.index, piece.begin,
-                                expected_piece_index, file_offset,
+                        if (actual_piece != expected_piece or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
+                            std.log.err(.zorrent_lib, "{}\tMalformed block: index={} begin={} expected_piece={} requested_file_offset={}", .{
+                                self.address,   piece.index, piece.begin,
+                                expected_piece, file_offset,
                             });
                             pieces.releaseFileOffset(file_offset);
                             continue;
@@ -493,6 +490,16 @@ pub const Peer = struct {
         }
     }
 };
+
+fn markFileOffsetAsHaveFromPiece(remote_have_file_offsets: *std.ArrayList(usize), piece: u32, piece_len: usize) !void {
+    var file_offset: usize = piece * piece_len;
+    const file_offset_to_add_count = piece_len / block_len;
+    try remote_have_file_offsets.ensureCapacity(remote_have_file_offsets.items.len + file_offset_to_add_count);
+
+    while (file_offset < piece * (1 + piece_len)) : (file_offset += block_len) {
+        remote_have_file_offsets.appendAssumeCapacity(file_offset);
+    }
+}
 
 pub const DownloadFile = struct {
     fd: c_int,
