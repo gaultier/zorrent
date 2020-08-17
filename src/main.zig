@@ -88,6 +88,7 @@ pub const Pieces = struct {
 
                 // Manual swap remove
                 const old_capacity = self.want_file_offsets.capacity;
+                const old_len = self.want_file_offsets.items.len;
                 {
                     const len = self.want_file_offsets.items.len;
                     if (self.want_file_offsets.items.len - 1 != file_offset_i.?) {
@@ -97,6 +98,7 @@ pub const Pieces = struct {
                     self.want_file_offsets.shrinkRetainingCapacity(len - 1);
                 }
                 std.debug.assert(old_capacity == self.want_file_offsets.capacity);
+                std.debug.assert(old_len == self.want_file_offsets.items.len + 1);
 
                 _ = self.want_count.decr();
 
