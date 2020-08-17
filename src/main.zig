@@ -262,7 +262,10 @@ pub const Peer = struct {
         if (read_len == 0) return null;
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
-        if (announced_len == 0) return null; // Heartbeat
+        if (announced_len == 0) {
+            std.log.notice(.zorrent_lib, "{}\tHeartbeat", .{self.address});
+            return null;
+        }
 
         if (announced_len > (block_len + 9)) {
             std.log.err(.zorrent_lib, "{}\tInvalid announced_len: {}", .{ self.address, announced_len });
