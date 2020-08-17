@@ -732,7 +732,7 @@ pub const TorrentFile = struct {
 
         if (bencode.mapLookup(&dict, "failure reason")) |failure_field| {
             std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, failure_field.String });
-            return error.EmptyPeers;
+            return error.TrackerFailure;
         }
 
         const peers_field = if (bencode.mapLookup(&dict, "peers")) |peers_field| peers_field.* else return error.EmptyPeers;
