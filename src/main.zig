@@ -121,7 +121,7 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
-                std.log.debug("{}\tAn error happened, releasing file_offset={} want_file_offsets={}", .{ self.address, file_offset, self.want_file_offsets });
+                std.log.debug(.zorrent_lib, "An error happened, releasing file_offset={} want_file_offsets={}", .{ file_offset, self.want_file_offsets });
                 self.want_file_offsets.appendAssumeCapacity(file_offset);
                 _ = self.want_count.incr();
             }
@@ -424,8 +424,7 @@ pub const Peer = struct {
                                 self.address,   piece.index, piece.begin,
                                 expected_piece, file_offset,
                             });
-                            pieces.releaseFileOffset(file_offset);
-                            continue;
+                            return error.MalformedMessage;
                         }
 
                         std.log.debug(.zorrent_lib, "{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
@@ -730,6 +729,11 @@ pub const TorrentFile = struct {
         std.log.notice(.zorrent_lib, "Tracker {} replied successfuly", .{url});
 
         var dict = tracker_response.root.Object;
+
+        if (bencode.mapLookup(&dict, "failure reason")) |failure_field| {
+            std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, failure_field.String });
+            return error.EmptyPeers;
+        }
 
         const peers_field = if (bencode.mapLookup(&dict, "peers")) |peers_field| peers_field.* else return error.EmptyPeers;
 
