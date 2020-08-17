@@ -133,7 +133,7 @@ pub const Pieces = struct {
         const have = self.have_count.get();
         const want = self.want_count.get();
         const total = want + have;
-        std.log.info(.zorrent_lib, "[Have/Remaining/Total: {}/{}/{}] {d:.2}%", .{ have, want, total, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+        std.log.info(.zorrent_lib, "[Have/Remaining/Total/Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.init_want_len * block_len, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
         return;
     }
 };
