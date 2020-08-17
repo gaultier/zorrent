@@ -102,6 +102,7 @@ pub const Pieces = struct {
 
                 _ = self.want_count.decr();
 
+                std.log.debug(.zorrent_lib, "acquireFileOffset: i={} file_offset={} len={} capacity={}", .{ file_offset_i, file_offset, self.want_file_offsets.items.len, self.want_file_offsets.capacity });
                 return file_offset;
             }
             std.time.sleep(1_000);
@@ -436,6 +437,7 @@ pub const Peer = struct {
                         std.log.debug(.zorrent_lib, "{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
                         std.mem.copy(u8, file_buffer[file_offset .. file_offset + expected_len], piece.data[0..]);
                         pieces.commitFileOffset(file_offset);
+                        file_offset_opt = null;
 
                         pieces.displayStats();
                         // TODO: check hashes
