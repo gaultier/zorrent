@@ -121,7 +121,6 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
-                std.log.debug(.zorrent_lib, "An error happened, releasing file_offset={} want_file_offsets={}", .{ file_offset, self.want_file_offsets });
                 self.want_file_offsets.appendAssumeCapacity(file_offset);
                 _ = self.want_count.incr();
             }
@@ -360,6 +359,8 @@ pub const Peer = struct {
         defer remote_have_file_offsets.deinit();
 
         errdefer if (file_offset_opt) |file_offset| {
+            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_capacity={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_file_offsets.capacity, pieces.want_file_offsets.items.len });
+
             pieces.releaseFileOffset(file_offset);
         };
 
@@ -787,8 +788,8 @@ pub const TorrentFile = struct {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
-        // const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
-        // try peers.append(try Peer.init(local_address, allocator)); // FIXME
+        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
+        try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
