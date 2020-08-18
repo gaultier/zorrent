@@ -349,7 +349,7 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        const pieces_len: usize = torrent_file.pieces.len / 20;
+        const pieces_len: usize = pieces.initial_want_block_count * block_len / torrent_file.piece_len;
         const blocks_per_piece: usize = torrent_file.piece_len / block_len;
         var choked = true;
         var file_offset_opt: ?usize = null;
@@ -373,15 +373,16 @@ pub const Peer = struct {
         while (true) {
             if (pieces.isFinished()) {
                 var piece: usize = 0;
-                while (piece < (pieces_len - 3)) : (piece += 1) {
-                    const begin: usize = piece * torrent_file.piece_len;
+                while (piece < pieces_len - 1) : (piece += 1) {
+                    const begin = piece * torrent_file.piece_len;
                     const expected_len: usize = torrent_file.piece_len;
-                    std.debug.warn("piece={} begin={} expected_len={}\n", .{ piece, begin, expected_len });
+                    std.debug.warn("piece={}/{} begin={}/{} expected_len={}\n", .{ piece, pieces_len, begin, torrent_file.total_len, expected_len });
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
                         std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
                     }
                 }
+                const begin = piece * torrent_file.piece_len;
                 if (!isPieceHashValid(piece, file_buffer[piece * torrent_file.piece_len ..], torrent_file.pieces)) {
                     std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
                 }
