@@ -71,7 +71,7 @@ pub const Pieces = struct {
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
-                std.debug.warn("want={X} | have={X}\n", .{ self.want_blocks_bitfield.items, remote_have_file_offsets_bitfield });
+                std.log.debug(.zorrent_lib, "want={X} | have={X}\n", .{ self.want_blocks_bitfield.items, remote_have_file_offsets_bitfield });
 
                 for (self.want_blocks_bitfield.items) |*want, i| {
                     if (want.* == 0) continue;
@@ -98,7 +98,6 @@ pub const Pieces = struct {
         _ = self.have_block_count.incr();
     }
 
-    // TODO: check hash
     pub fn isFinished(self: *Pieces) bool {
         return self.initial_want_block_count == self.have_block_count.get();
     }
@@ -121,8 +120,6 @@ pub const Pieces = struct {
         const have: usize = self.have_block_count.get();
         const want: usize = self.want_block_count.get();
         const total: usize = want + have;
-
-        std.debug.assert(total == self.initial_want_block_count);
 
         std.log.info(.zorrent_lib, "[Have/Remaining/Total/Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.initial_want_block_count * block_len, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
         return;
@@ -349,13 +346,13 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        const pieces_len: usize = pieces.initial_want_block_count * block_len / torrent_file.piece_len;
+        // Div ceil
+        const pieces_len: usize = 1 + ((pieces.initial_want_block_count * block_len - 1) / torrent_file.piece_len);
         const blocks_per_piece: usize = torrent_file.piece_len / block_len;
         var choked = true;
         var file_offset_opt: ?usize = null;
 
         var remote_have_pieces_bitfield = std.ArrayList(u8).init(self.allocator);
-        const initial_want_block_count: usize = torrent_file.total_len / block_len;
         // TODO: deal with padding bytes?
         try remote_have_pieces_bitfield.appendNTimes(0, pieces.initial_want_block_count);
         defer remote_have_pieces_bitfield.deinit();
@@ -376,13 +373,15 @@ pub const Peer = struct {
                 while (piece < pieces_len - 1) : (piece += 1) {
                     const begin = piece * torrent_file.piece_len;
                     const expected_len: usize = torrent_file.piece_len;
-                    std.debug.warn("piece={}/{} begin={}/{} expected_len={}\n", .{ piece, pieces_len, begin, torrent_file.total_len, expected_len });
+                    std.log.debug(.zorrent_lib, "piece={}/{} begin={}/{} expected_len={}\n", .{ piece, pieces_len, begin, torrent_file.total_len, expected_len });
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
                         std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
                     }
                 }
                 const begin = piece * torrent_file.piece_len;
+
+                std.log.debug(.zorrent_lib, "last piece: piece={} file_offset={} len={} data={X}", .{ piece, piece * torrent_file.piece_len, file_buffer[piece * torrent_file.piece_len ..].len, file_buffer[piece * torrent_file.piece_len ..] });
                 if (!isPieceHashValid(piece, file_buffer[piece * torrent_file.piece_len ..], torrent_file.pieces)) {
                     std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
                 }
@@ -792,12 +791,12 @@ pub const TorrentFile = struct {
         try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
-        for (self.announce_urls) |url| {
-            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, err });
-                continue;
-            };
-        }
+        // for (self.announce_urls) |url| {
+        //     self.addPeersFromTracker(url, &peers, allocator) catch |err| {
+        //         std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, err });
+        //         continue;
+        //     };
+        // }
 
         return peers.toOwnedSlice();
     }
