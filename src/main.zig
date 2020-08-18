@@ -159,6 +159,26 @@ fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bo
     return identical;
 }
 
+fn areAllPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8, hashes: []const u8) bool {
+    // TODO: parallelize
+    var all_valid = true;
+    var piece: usize = 0;
+    while (piece < pieces_len - 1) : (piece += 1) {
+        const begin: usize = piece * piece_len;
+        const expected_len: usize = piece_len;
+
+        if (!isPieceHashValid(piece, file_buffer[begin..std.math.min(file_buffer.len, begin + expected_len)], hashes)) {
+            all_valid = false;
+            std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
+            // TODO: re-fetch piece
+        } else {
+            std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
+        }
+    }
+
+    return all_valid;
+}
+
 pub const Peer = struct {
     address: std.net.Address,
     socket: ?std.fs.File,
@@ -369,30 +389,10 @@ pub const Peer = struct {
 
         while (true) {
             if (pieces.isFinished()) {
-                var piece: usize = 0;
-                while (piece < pieces_len - 1) : (piece += 1) {
-                    const begin = piece * torrent_file.piece_len;
-                    const expected_len: usize = torrent_file.piece_len;
-
-                    if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
-                        std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
-                        // TODO: re-fetch piece
-                    } else {
-                        std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
-                    }
+                if (areAllPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces)) {
+                    std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
+                    return;
                 }
-
-                const begin = piece * torrent_file.piece_len;
-                if (!isPieceHashValid(piece, file_buffer[piece * torrent_file.piece_len ..], torrent_file.pieces)) {
-                    std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
-
-                    // TODO: re-fetch piece
-                } else {
-                    std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
-                }
-
-                std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
-                return;
             }
 
             const message = self.parseMessage() catch |err| {
