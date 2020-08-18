@@ -373,7 +373,6 @@ pub const Peer = struct {
                 while (piece < pieces_len - 1) : (piece += 1) {
                     const begin = piece * torrent_file.piece_len;
                     const expected_len: usize = torrent_file.piece_len;
-                    std.log.debug(.zorrent_lib, "piece={}/{} begin={}/{} expected_len={}\n", .{ piece, pieces_len, begin, torrent_file.total_len, expected_len });
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
                         std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
@@ -381,9 +380,8 @@ pub const Peer = struct {
                 }
                 const begin = piece * torrent_file.piece_len;
 
-                std.log.debug(.zorrent_lib, "last piece: piece={} file_offset={} len={} data={X}", .{ piece, piece * torrent_file.piece_len, file_buffer[piece * torrent_file.piece_len ..].len, file_buffer[piece * torrent_file.piece_len ..] });
                 if (!isPieceHashValid(piece, file_buffer[piece * torrent_file.piece_len ..], torrent_file.pieces)) {
-                    std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
+                    std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
                 }
 
                 std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
