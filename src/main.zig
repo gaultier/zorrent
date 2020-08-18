@@ -378,7 +378,7 @@ pub const Peer = struct {
                         std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
                         // TODO: re-fetch piece
                     } else {
-                        std.log.info(.zorrent_lib, "Piece {} valid", .{piece});
+                        std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
                     }
                 }
 
@@ -388,7 +388,7 @@ pub const Peer = struct {
 
                     // TODO: re-fetch piece
                 } else {
-                    std.log.info(.zorrent_lib, "Piece {} valid", .{piece});
+                    std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
                 }
 
                 std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
