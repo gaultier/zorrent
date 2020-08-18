@@ -373,10 +373,10 @@ pub const Peer = struct {
         while (true) {
             if (pieces.isFinished()) {
                 var piece: usize = 0;
-                while (piece < (pieces_len - 1)) : (piece += 1) {
+                while (piece < (pieces_len - 3)) : (piece += 1) {
                     const begin: usize = piece * torrent_file.piece_len;
                     const expected_len: usize = torrent_file.piece_len;
-                    std.debug.warn("begin={} expected_len={}\n", .{ begin, expected_len });
+                    std.debug.warn("piece={} begin={} expected_len={}\n", .{ piece, begin, expected_len });
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
                         std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
