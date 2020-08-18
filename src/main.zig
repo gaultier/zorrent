@@ -30,80 +30,64 @@ pub const PieceStatus = enum(u2) {
 
 pub const Pieces = struct {
     prng: std.rand.DefaultPrng,
-    want_file_offsets: std.ArrayList(usize),
+    want_blocks_bitfield: std.ArrayList(u8),
     allocator: *std.mem.Allocator,
     piece_acquire_mutex: std.Mutex,
-    init_want_len: usize,
-    have_count: std.atomic.Int(usize),
-    want_count: std.atomic.Int(usize),
+    initial_want_block_count: usize,
+    have_block_count: std.atomic.Int(usize),
+    want_block_count: std.atomic.Int(usize),
 
     pub fn init(file_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var buf: [8]u8 = undefined;
         try std.crypto.randomBytes(buf[0..]);
         const seed = std.mem.readIntLittle(u64, buf[0..8]);
 
-        var want_file_offsets = std.ArrayList(usize).init(allocator);
-        try want_file_offsets.ensureCapacity(std.math.max(1, file_len / block_len));
-
-        var i: usize = 0;
-        while (i < file_len) : (i += block_len) {
-            want_file_offsets.addOneAssumeCapacity().* = i;
-        }
+        var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
+        // Div ceil
+        const initial_want_block_count: usize = 1 + ((file_len - 1) / block_len);
+        // Div ceil
+        try want_blocks_bitfield.appendNTimes(0xff, 1 + ((initial_want_block_count - 1) / 8));
 
         return Pieces{
-            .want_file_offsets = want_file_offsets,
+            .want_blocks_bitfield = want_blocks_bitfield,
             .allocator = allocator,
             .prng = std.rand.DefaultPrng.init(seed),
             .piece_acquire_mutex = std.Mutex{},
-            .have_count = std.atomic.Int(usize).init(0),
-            .want_count = std.atomic.Int(usize).init(want_file_offsets.items.len),
-            .init_want_len = want_file_offsets.items.len,
+            .have_block_count = std.atomic.Int(usize).init(0),
+            .want_block_count = std.atomic.Int(usize).init(initial_want_block_count),
+            .initial_want_block_count = initial_want_block_count,
         };
     }
 
     pub fn deinit(self: *Pieces) void {
         self.piece_acquire_mutex.deinit();
-        self.want_file_offsets.deinit();
+        self.want_blocks_bitfield.deinit();
     }
 
-    pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets: []const usize) ?usize {
+    pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
+        std.debug.assert(!self.isFinished());
+
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
-                if (self.want_file_offsets.items.len == 0) return null;
+                std.debug.warn("want={X} | have={X}\n", .{ self.want_blocks_bitfield.items, remote_have_file_offsets_bitfield });
 
-                var file_offset_i: ?usize = null;
-                outer: for (self.want_file_offsets.items) |want, i| {
-                    for (remote_have_file_offsets) |remote_have| {
-                        if (remote_have == want) {
-                            file_offset_i = i;
-                            break :outer;
-                        }
-                    }
+                for (self.want_blocks_bitfield.items) |*want, i| {
+                    if (want.* == 0) continue;
+                    const remote = self.want_blocks_bitfield.items[i];
+                    if ((want.* & remote) == 0) continue;
+
+                    const bit: u3 = @intCast(u3, @ctz(u8, want.* & remote));
+                    const file_offset = block_len * i * 8 + block_len * bit;
+                    // Clear bit
+                    want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << bit));
+
+                    _ = self.want_block_count.decr();
+
+                    std.log.debug(.zorrent_lib, "acquireFileOffset: overlap={} bit={} i={} file_offset={}", .{ want.* & remote, bit, i, file_offset });
+                    return file_offset;
                 }
-                if (file_offset_i == null) return null;
-
-                const file_offset = self.want_file_offsets.items[file_offset_i.?];
-
-                // Manual swap remove
-                const old_capacity = self.want_file_offsets.capacity;
-                const old_len = self.want_file_offsets.items.len;
-                {
-                    const len = self.want_file_offsets.items.len;
-                    if (self.want_file_offsets.items.len - 1 != file_offset_i.?) {
-                        self.want_file_offsets.items[file_offset_i.?] = self.want_file_offsets.items[len - 1];
-                    }
-                    self.want_file_offsets.items[len - 1] = undefined;
-                    self.want_file_offsets.shrinkRetainingCapacity(len - 1);
-                }
-                std.debug.assert(old_capacity == self.want_file_offsets.capacity);
-                std.debug.assert(old_len == self.want_file_offsets.items.len + 1);
-
-                _ = self.want_count.decr();
-
-                std.log.debug(.zorrent_lib, "acquireFileOffset: i={} file_offset={} len={} capacity={}", .{ file_offset_i, file_offset, self.want_file_offsets.items.len, self.want_file_offsets.capacity });
-                return file_offset;
             }
             std.time.sleep(1_000);
         }
@@ -111,12 +95,12 @@ pub const Pieces = struct {
     }
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
-        _ = self.have_count.incr();
+        _ = self.have_block_count.incr();
     }
 
     // TODO: check hash
     pub fn isFinished(self: *Pieces) bool {
-        return self.init_want_len == self.have_count.get();
+        return self.initial_want_block_count == self.have_block_count.get();
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
@@ -124,17 +108,23 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
-                self.want_file_offsets.appendAssumeCapacity(file_offset);
-                _ = self.want_count.incr();
+                const i: usize = file_offset / block_len;
+                const bit: u3 = @intCast(u3, i % 8);
+                // Set bit to 1
+                self.want_blocks_bitfield.items[i] |= std.mem.nativeToBig(u8, @as(u8, 1) << bit);
+                _ = self.want_block_count.incr();
             }
         }
     }
 
     pub fn displayStats(self: *Pieces) void {
-        const have = self.have_count.get();
-        const want = self.want_count.get();
-        const total = want + have;
-        std.log.info(.zorrent_lib, "[Have/Remaining/Total/Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.init_want_len * block_len, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+        const have: usize = self.have_block_count.get();
+        const want: usize = self.want_block_count.get();
+        const total: usize = want + have;
+
+        std.debug.assert(total == self.initial_want_block_count);
+
+        std.log.info(.zorrent_lib, "[Have/Remaining/Total/Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.initial_want_block_count * block_len, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
         return;
     }
 };
@@ -160,6 +150,16 @@ pub const block_len: usize = 1 << 14;
 
 fn isHandshake(buffer: []const u8) bool {
     return (buffer.len == handshake_len and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
+}
+
+fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
+    const expected_hash = hashes[piece * 20 .. (piece + 1) * 20];
+    var actual_hash: [20]u8 = undefined;
+    std.crypto.Sha1.hash(piece_data[0..], actual_hash[0..]);
+    const identical = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
+
+    std.log.debug(.zorrent_lib, "isPieceHashValid: piece={} actual_hash={X} expected_hash={X} matching_hash={}", .{ piece, actual_hash, expected_hash, identical });
+    return identical;
 }
 
 pub const Peer = struct {
@@ -352,26 +352,40 @@ pub const Peer = struct {
         const pieces_len: usize = torrent_file.pieces.len / 20;
         const blocks_per_piece: usize = torrent_file.piece_len / block_len;
         var choked = true;
-        var requests_in_flight: usize = 0;
-        const max_requests_in_flight: usize = 1;
         var file_offset_opt: ?usize = null;
 
-        // bitfield
         var remote_have_pieces_bitfield = std.ArrayList(u8).init(self.allocator);
-        try remote_have_pieces_bitfield.appendNTimes(0, 1 + pieces_len / 8);
+        const initial_want_block_count: usize = torrent_file.total_len / block_len;
+        // TODO: deal with padding bytes?
+        try remote_have_pieces_bitfield.appendNTimes(0, pieces.initial_want_block_count);
         defer remote_have_pieces_bitfield.deinit();
 
-        var remote_have_file_offsets = std.ArrayList(usize).init(self.allocator);
-        defer remote_have_file_offsets.deinit();
+        var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
+        try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.want_blocks_bitfield.items.len);
+        defer remote_have_file_offsets_bitfield.deinit();
 
         errdefer if (file_offset_opt) |file_offset| {
-            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_capacity={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_file_offsets.capacity, pieces.want_file_offsets.items.len });
+            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_capacity={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_blocks_bitfield.capacity, pieces.want_blocks_bitfield.items.len });
 
             pieces.releaseFileOffset(file_offset);
         };
 
         while (true) {
             if (pieces.isFinished()) {
+                var piece: usize = 0;
+                while (piece < (pieces_len - 1)) : (piece += 1) {
+                    const begin: usize = piece * torrent_file.piece_len;
+                    const expected_len: usize = torrent_file.piece_len;
+                    std.debug.warn("begin={} expected_len={}\n", .{ begin, expected_len });
+
+                    if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
+                        std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
+                    }
+                }
+                if (!isPieceHashValid(piece, file_buffer[piece * torrent_file.piece_len ..], torrent_file.pieces)) {
+                    std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
+                }
+
                 std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                 return;
             }
@@ -395,7 +409,7 @@ pub const Peer = struct {
 
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                         remote_have_pieces_bitfield.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
-                        try markFileOffsetAsHaveFromPiece(&remote_have_file_offsets, piece, torrent_file.piece_len, torrent_file.total_len);
+                        try markFileOffsetAsHaveFromPiece(&remote_have_file_offsets_bitfield, piece, torrent_file.piece_len, torrent_file.total_len);
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
@@ -407,23 +421,22 @@ pub const Peer = struct {
                         std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
 
                         for (bitfield) |have, i| {
-                            try markPiecesAsHaveFromBitfield(&remote_have_file_offsets, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
+                            try markPiecesAsHaveFromBitfield(&remote_have_file_offsets_bitfield, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
                         defer self.allocator.free(bitfield);
                     },
                     Message.Piece => |piece| {
                         if (file_offset_opt == null) continue;
 
-                        requests_in_flight -= 1;
-                        const file_offset = file_offset_opt.?;
+                        const file_offset: usize = file_offset_opt.?;
 
                         const expected_piece: u32 = @intCast(u32, file_offset / torrent_file.piece_len);
                         const expected_begin: u32 = @intCast(u32, file_offset - @as(usize, expected_piece) * @as(usize, torrent_file.piece_len));
-                        const expected_len = @intCast(u32, std.math.min(block_len, torrent_file.total_len - (expected_piece * torrent_file.piece_len + expected_begin)));
-                        const actual_piece = piece.index;
-                        const actual_begin = piece.begin;
-                        const actual_len = piece.data.len;
-                        const actual_file_offset = piece.index * torrent_file.piece_len + piece.begin;
+                        const expected_len: usize = @intCast(u32, std.math.min(block_len, torrent_file.total_len - (expected_piece * torrent_file.piece_len + expected_begin)));
+                        const actual_piece: usize = piece.index;
+                        const actual_begin: usize = piece.begin;
+                        const actual_len: usize = piece.data.len;
+                        const actual_file_offset: usize = piece.index * torrent_file.piece_len + piece.begin;
 
                         // Malformed piece, skip
                         if (actual_piece != expected_piece or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
@@ -440,26 +453,6 @@ pub const Peer = struct {
                         file_offset_opt = null;
 
                         pieces.displayStats();
-                        // TODO: check hashes
-
-                        // const expected_hash = torrent_file.pieces[piece.index * 20 .. (piece.index + 1) * 20];
-                        // var actual_hash: [20]u8 = undefined;
-                        // std.crypto.Sha1.hash(piece.data[0..], actual_hash[0..]);
-                        // const matching_hash = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
-
-                        // std.debug.warn("{}\tpiece #{} data_len={} actual_hash=", .{
-                        //     self.address,
-                        //     piece.index,
-                        //     piece.data.len,
-                        // });
-                        // hexDump(actual_hash[0..20]);
-                        // std.debug.warn("{}\tpiece #{} expected_hash=", .{ self.address, piece.index });
-                        // hexDump(expected_hash[0..20]);
-                        // std.debug.warn("{}\tpiece #{} matching_hash={}\n", .{
-                        //     self.address,
-                        //     piece.index,
-                        //     matching_hash,
-                        // });
                     },
                     else => {},
                 }
@@ -467,32 +460,33 @@ pub const Peer = struct {
                 std.time.sleep(500_000_000);
             }
 
-            if (!choked and requests_in_flight < max_requests_in_flight) {
-                file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets.items[0..]);
+            if (file_offset_opt == null and !choked and !pieces.isFinished()) {
+                file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
                     continue;
                 }
                 try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
-                requests_in_flight += 1;
             }
         }
     }
 };
 
-fn markFileOffsetAsHaveFromPiece(remote_have_file_offsets: *std.ArrayList(usize), piece: u32, piece_len: usize, total_len: usize) !void {
+fn markFileOffsetAsHaveFromPiece(remote_have_file_offsets_bitfield: *std.ArrayList(u8), piece: u32, piece_len: usize, total_len: usize) !void {
     var file_offset: usize = piece * piece_len;
-    const file_offset_to_add_count = piece_len / block_len;
-    try remote_have_file_offsets.ensureCapacity(remote_have_file_offsets.items.len + file_offset_to_add_count);
 
     const size = std.math.min(total_len, (piece + 1) * piece_len);
     while (file_offset < size) : (file_offset += block_len) {
         std.debug.assert(file_offset < total_len);
-        remote_have_file_offsets.appendAssumeCapacity(file_offset);
+        const block: usize = file_offset / block_len;
+        const bit: u3 = @intCast(u3, block % 8);
+
+        std.log.debug(.zorrent_lib, "markFileOffsetAsHaveFromPiece: piece={} file_offset={} block={} bit={}", .{ piece, file_offset, block, bit });
+        remote_have_file_offsets_bitfield.items[block / 8] |= @as(u8, 1) << bit;
     }
 }
 
-fn markPiecesAsHaveFromBitfield(remote_have_file_offsets: *std.ArrayList(usize), remote_have_pieces_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) !void {
+fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: *std.ArrayList(u8), remote_have_pieces_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) !void {
     remote_have_pieces_bitfield.items[have_bitfield_index] |= have_bitfield;
 
     var j: u8 = 0;
@@ -504,9 +498,7 @@ fn markPiecesAsHaveFromBitfield(remote_have_file_offsets: *std.ArrayList(usize),
 
         if (has_piece_mask == 0) continue;
 
-        // TODO: check max bitfield len < u32 capacity
-
-        try markFileOffsetAsHaveFromPiece(remote_have_file_offsets, piece, piece_len, total_len);
+        try markFileOffsetAsHaveFromPiece(remote_have_file_offsets_bitfield, piece, piece_len, total_len);
     }
 }
 
