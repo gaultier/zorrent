@@ -789,12 +789,12 @@ pub const TorrentFile = struct {
         try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
-        // for (self.announce_urls) |url| {
-        //     self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-        //         std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, err });
-        //         continue;
-        //     };
-        // }
+        for (self.announce_urls) |url| {
+            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
+                std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, err });
+                continue;
+            };
+        }
 
         return peers.toOwnedSlice();
     }
