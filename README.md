@@ -1,6 +1,11 @@
 # zorrent
 Experimental Zig torrent library and client example program.
 
+```sh
+$ zig build
+$ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019-10-16-1254.torrent
+```
+
 ## ROADMAP
 
 - [x] TCP
