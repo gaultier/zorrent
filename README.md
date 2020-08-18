@@ -13,10 +13,10 @@ $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019
 - [x] Smart piece request based on the bitfield/have peer messages
 - [x] Check pieces SHA1 hashes
 - [ ] Re-fetch piece if hash fails
-- [ ] Serve pieces
+- [ ] Request pipelining
 - [ ] Support torrent with multiple files
 - [ ] Add timeout to expire acquired file offset
-- [ ] Request pipelining
 - [ ] UDP
 - [ ] Extension messages
+- [ ] Serve pieces
 
