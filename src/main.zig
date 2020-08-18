@@ -376,12 +376,19 @@ pub const Peer = struct {
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + expected_len], torrent_file.pieces)) {
                         std.log.warn(.zorrent_lib, "invalid piece={}", .{piece});
+                        // TODO: re-fetch piece
+                    } else {
+                        std.log.info(.zorrent_lib, "Piece {} valid", .{piece});
                     }
                 }
-                const begin = piece * torrent_file.piece_len;
 
+                const begin = piece * torrent_file.piece_len;
                 if (!isPieceHashValid(piece, file_buffer[piece * torrent_file.piece_len ..], torrent_file.pieces)) {
                     std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
+
+                    // TODO: re-fetch piece
+                } else {
+                    std.log.info(.zorrent_lib, "Piece {} valid", .{piece});
                 }
 
                 std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
