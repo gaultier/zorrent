@@ -21,6 +21,7 @@ $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019
   * [ ] Upload files (serve)
   * [ ] Save want state to continue downloading a file after a restart
   * [ ] Check hashes in parallel
+  * [ ] Get peers from trackers in parallel
 - [x] Multi-tracker (BEP-0012)
 - [x] Compact peer list from tracker (BEP-0023)
 - [ ] Better download algorithm: get rarest pieces first
