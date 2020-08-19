@@ -10,7 +10,7 @@ $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019
 
 ## ROADMAP
 
-- BEP-003:
+- BEP-0003:
   * [x] Download one file
   * [x] Smart piece request based on the bitfield/have peer messages
   * [x] Check pieces SHA1 hashes
@@ -21,6 +21,8 @@ $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019
   * [ ] Upload files (serve)
 - [x] Multi-tracker (BEP-0012)
 - [x] Compact peer list from tracker (BEP-0023)
+- [ ] Better download algorithm: get rarest pieces first
+- [ ] Fast extension (BEP-0006)
 - [ ] UDP
 - [ ] Extension messages
 
