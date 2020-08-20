@@ -181,8 +181,8 @@ pub const Peer = struct {
     pub fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32, total_len: usize) !void {
         const piece: u32 = @intCast(u32, file_offset / piece_len);
         const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, piece_len));
-        const len = @intCast(u32, std.math.min(block_len, total_len - (piece * piece_len + begin)));
 
+        const len = @intCast(u32, if (piece * piece_len + begin > total_len) block_len else piece * piece_len + begin);
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload), payload_len);
