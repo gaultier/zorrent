@@ -47,7 +47,7 @@ pub fn main() anyerror!void {
     defer frames.deinit();
     try frames.ensureCapacity(peers.len);
 
-    var download_file = try torrent_file.openMmapFile();
+    var download_file = try zorrent.openMmapFile(torrent_file.path, torrent_file.total_len);
     defer download_file.deinit();
 
     var pieces = try zorrent.Pieces.init(torrent_file.total_len, allocator);
