@@ -261,19 +261,7 @@ pub const Peer = struct {
         };
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
-        std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
-        self.connect() catch |err| {
-            switch (err) {
-                error.ConnectionTimedOut, error.ConnectionRefused => {
-                    std.log.err(.zorrent_lib, "{}\tFailed ({})", .{ self.address, err });
-                    return;
-                },
-                else => return err,
-            }
-        };
-        std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
-
+    fn waitForHandshake(self: *Peer, torrent_file: TorrentFile) !void {
         std.log.notice(.zorrent_lib, "{}\tHandshaking", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
@@ -287,7 +275,22 @@ pub const Peer = struct {
         }
         self.recv_buffer.shrinkRetainingCapacity(0);
         std.log.notice(.zorrent_lib, "{}\tHandshaked", .{self.address});
+    }
 
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
+        std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
+        self.connect() catch |err| {
+            switch (err) {
+                error.ConnectionTimedOut, error.ConnectionRefused => {
+                    std.log.err(.zorrent_lib, "{}\tFailed ({})", .{ self.address, err });
+                    return;
+                },
+                else => return err,
+            }
+        };
+        std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
+
+        try self.waitForHandshake(torrent_file);
         try self.sendInterested();
         try self.sendChoke();
 
