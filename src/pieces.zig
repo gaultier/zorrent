@@ -97,6 +97,7 @@ pub const Pieces = struct {
                 // Set bit to 1
                 self.want_blocks_bitfield.items[i] |= std.mem.nativeToBig(u8, @as(u8, 1) << bit);
                 _ = self.want_block_count.incr();
+                return;
             }
         }
     }
@@ -104,6 +105,8 @@ pub const Pieces = struct {
     pub fn displayStats(self: *Pieces) void {
         const have: usize = self.have_block_count.get();
         const want: usize = self.want_block_count.get();
+        std.debug.assert(want <= self.initial_want_block_count);
+
         const total: usize = want + have;
         const percent: f64 = @intToFloat(f64, have) / @intToFloat(f64, total) * 100.0;
 
