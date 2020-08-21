@@ -51,12 +51,16 @@ pub const Pieces = struct {
 
                 for (self.want_blocks_bitfield.items) |*want, i| {
                     if (want.* == 0) continue;
-                    const remote = self.want_blocks_bitfield.items[i];
+                    const remote = remote_have_file_offsets_bitfield[i];
                     if ((want.* & remote) == 0) continue;
 
                     const bit: u3 = @intCast(u3, @ctz(u8, want.* & remote));
-                    const file_offset = block_len * (i * 8 + bit);
+                    const block = i * 8 + bit;
+                    std.debug.assert(block < self.initial_want_block_count);
+
+                    const file_offset = block_len * block;
                     std.debug.assert(file_offset < self.total_len);
+
                     // Clear bit
                     want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << bit));
 
@@ -73,7 +77,8 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
         std.debug.assert(file_offset < self.total_len);
-        _ = self.have_block_count.incr();
+        const count = self.have_block_count.incr();
+        std.debug.assert(count <= self.initial_want_block_count);
     }
 
     pub fn isFinished(self: *Pieces) bool {
@@ -87,7 +92,7 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
-                const i: usize = file_offset / block_len;
+                const i: usize = file_offset / block_len / 8;
                 const bit: u3 = @intCast(u3, i % 8);
                 // Set bit to 1
                 self.want_blocks_bitfield.items[i] |= std.mem.nativeToBig(u8, @as(u8, 1) << bit);
