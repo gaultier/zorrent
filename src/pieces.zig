@@ -10,6 +10,7 @@ pub const Pieces = struct {
     initial_want_block_count: usize,
     have_block_count: std.atomic.Int(usize),
     want_block_count: std.atomic.Int(usize),
+    total_len: usize,
 
     pub fn init(file_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var buf: [8]u8 = undefined;
@@ -30,6 +31,7 @@ pub const Pieces = struct {
             .have_block_count = std.atomic.Int(usize).init(0),
             .want_block_count = std.atomic.Int(usize).init(initial_want_block_count),
             .initial_want_block_count = initial_want_block_count,
+            .total_len = file_len,
         };
     }
 
@@ -53,7 +55,8 @@ pub const Pieces = struct {
                     if ((want.* & remote) == 0) continue;
 
                     const bit: u3 = @intCast(u3, @ctz(u8, want.* & remote));
-                    const file_offset = block_len * i * 8 + block_len * bit;
+                    const file_offset = block_len * (i * 8 + bit);
+                    std.debug.assert(file_offset < self.total_len);
                     // Clear bit
                     want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << bit));
 
@@ -69,6 +72,7 @@ pub const Pieces = struct {
     }
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
+        std.debug.assert(file_offset < self.total_len);
         _ = self.have_block_count.incr();
     }
 
@@ -77,6 +81,8 @@ pub const Pieces = struct {
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
+        std.debug.assert(file_offset < self.total_len);
+
         while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();

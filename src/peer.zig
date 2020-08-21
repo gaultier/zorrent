@@ -300,6 +300,7 @@ pub const Peer = struct {
         const blocks_per_piece: usize = torrent_file.piece_len / block_len;
         var choked = true;
         var file_offset_opt: ?usize = null;
+        std.log.debug(.zorrent_lib, "stats: total_len={} block_len={} piece_len={}, pieces_count={} blocks_per_piece={} blocks_count={}", .{ torrent_file.total_len, block_len, torrent_file.piece_len, pieces_len, torrent_file.piece_len / block_len, pieces.initial_want_block_count });
 
         var remote_have_pieces_bitfield = std.ArrayList(u8).init(self.allocator);
         // TODO: deal with padding bytes?
@@ -311,7 +312,7 @@ pub const Peer = struct {
         defer remote_have_file_offsets_bitfield.deinit();
 
         errdefer if (file_offset_opt) |file_offset| {
-            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_capacity={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_blocks_bitfield.capacity, pieces.want_blocks_bitfield.items.len });
+            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_blocks_bitfield.items.len });
 
             pieces.releaseFileOffset(file_offset);
         };
