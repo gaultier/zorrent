@@ -105,8 +105,9 @@ pub const Pieces = struct {
         const have: usize = self.have_block_count.get();
         const want: usize = self.want_block_count.get();
         const total: usize = want + have;
+        const percent: f64 = @intToFloat(f64, have) / @intToFloat(f64, total) * 100.0;
 
-        std.log.info(.zorrent_lib, "[Have/Remaining/Total/Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.initial_want_block_count * block_len, @intToFloat(f32, have) / @intToFloat(f32, total) * 100.0 });
+        std.log.info(.zorrent_lib, "[Have/Remaining/Total/Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.initial_want_block_count * block_len, percent });
         return;
     }
 };
