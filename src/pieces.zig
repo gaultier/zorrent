@@ -12,14 +12,14 @@ pub const Pieces = struct {
     want_block_count: std.atomic.Int(usize),
     total_len: usize,
 
-    pub fn init(file_len: usize, allocator: *std.mem.Allocator) !Pieces {
+    pub fn init(total_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var buf: [8]u8 = undefined;
         try std.crypto.randomBytes(buf[0..]);
         const seed = std.mem.readIntLittle(u64, buf[0..8]);
 
         var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
         // Div ceil
-        const initial_want_block_count: usize = 1 + ((file_len - 1) / block_len);
+        const initial_want_block_count: usize = 1 + ((total_len - 1) / block_len);
         // Div ceil
         try want_blocks_bitfield.appendNTimes(0xff, 1 + ((initial_want_block_count - 1) / 8));
 
@@ -31,7 +31,7 @@ pub const Pieces = struct {
             .have_block_count = std.atomic.Int(usize).init(0),
             .want_block_count = std.atomic.Int(usize).init(initial_want_block_count),
             .initial_want_block_count = initial_want_block_count,
-            .total_len = file_len,
+            .total_len = total_len,
         };
     }
 

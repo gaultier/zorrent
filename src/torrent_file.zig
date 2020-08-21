@@ -56,12 +56,12 @@ pub const TorrentFile = struct {
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
         var file_path: ?[]const u8 = null;
-        var file_length: ?isize = null;
+        var total_len: ?isize = null;
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
             file_path = field.String;
         }
         if (bencode.mapLookup(&field_info.Object, "length")) |field| {
-            file_length = field.Integer;
+            total_len = field.Integer;
         }
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
@@ -69,7 +69,7 @@ pub const TorrentFile = struct {
             if (field.Array.items.len > 0) {
                 var file_field = field.Array.items[0].Object;
                 file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
-                file_length = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
+                total_len = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
             }
         }
 
@@ -85,11 +85,11 @@ pub const TorrentFile = struct {
 
         return TorrentFile{
             .announce_urls = owned_announce_urls.toOwnedSlice(),
-            .total_len = @intCast(usize, file_length.?),
+            .total_len = @intCast(usize, total_len.?),
             .hash_info = hash,
             .uploadedBytesCount = 0,
             .downloadedBytesCount = 0,
-            .leftBytesCount = @intCast(usize, file_length.?),
+            .leftBytesCount = @intCast(usize, total_len.?),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
             .path = owned_file_path.toOwnedSlice(),
