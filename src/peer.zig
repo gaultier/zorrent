@@ -301,8 +301,8 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        const pieces_len: usize = utils.ceil(usize, total_len, torrent_file.piece_len);
-        const blocks_per_piece: usize = utils.ceil(usize, torrent_file.piece_len, block_len);
+        const pieces_len: usize = utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
+        const blocks_per_piece: usize = utils.divCeil(usize, torrent_file.piece_len, block_len);
         var choked = true;
         var file_offset_opt: ?usize = null;
         std.log.debug(.zorrent_lib, "stats: total_len={} block_len={} piece_len={}, pieces_count={} blocks_per_piece={} blocks_count={}", .{ torrent_file.total_len, block_len, torrent_file.piece_len, pieces_len, torrent_file.piece_len / block_len, pieces.initial_want_block_count });
