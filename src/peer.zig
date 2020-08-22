@@ -41,7 +41,7 @@ fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bo
     return identical;
 }
 
-fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8, hashes: []const u8, want_blocks_bitfield: *std.ArrayList(u8)) bool {
+fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8, hashes: []const u8, want_blocks_bitfield: *std.ArrayList(u8), want_block_count: *std.atomic.Int(usize)) bool {
     // TODO: parallelize
     var all_valid = true;
     var piece: usize = 0;
@@ -54,6 +54,7 @@ fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8
             std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
 
             markFileOffsetsFromPiece(want_blocks_bitfield, @intCast(u32, piece), pieces_len, file_buffer.len);
+            _ = want_block_count.incr();
 
             // TODO: re-fetch piece
         } else {
@@ -324,7 +325,7 @@ pub const Peer = struct {
 
         while (true) {
             if (pieces.isFinished()) {
-                if (checkPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces, &pieces.want_blocks_bitfield)) {
+                if (checkPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces, &pieces.want_blocks_bitfield, &pieces.want_block_count)) {
                     std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                     return;
                 }
