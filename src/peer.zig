@@ -6,6 +6,8 @@ const TorrentFile = torrent_file_mod.TorrentFile;
 const pieces_mod = @import("pieces.zig");
 const Pieces = pieces_mod.Pieces;
 
+const utils = @import("utils.zig");
+
 const handshake_len: usize = 1 + 19 + 8 + 20 + 20;
 const block_len = pieces_mod.block_len;
 
@@ -299,9 +301,8 @@ pub const Peer = struct {
         try self.sendInterested();
         try self.sendChoke();
 
-        // Div ceil
-        const pieces_len: usize = 1 + ((pieces.initial_want_block_count * block_len - 1) / torrent_file.piece_len);
-        const blocks_per_piece: usize = torrent_file.piece_len / block_len;
+        const pieces_len: usize = utils.ceil(usize, total_len, torrent_file.piece_len);
+        const blocks_per_piece: usize = utils.ceil(usize, torrent_file.piece_len, block_len);
         var choked = true;
         var file_offset_opt: ?usize = null;
         std.log.debug(.zorrent_lib, "stats: total_len={} block_len={} piece_len={}, pieces_count={} blocks_per_piece={} blocks_count={}", .{ torrent_file.total_len, block_len, torrent_file.piece_len, pieces_len, torrent_file.piece_len / block_len, pieces.initial_want_block_count });

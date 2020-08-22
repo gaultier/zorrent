@@ -1,4 +1,5 @@
 const std = @import("std");
+const utils = @import("utils.zig");
 
 pub const block_len: usize = 1 << 14;
 
@@ -18,10 +19,8 @@ pub const Pieces = struct {
         const seed = std.mem.readIntLittle(u64, buf[0..8]);
 
         var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
-        // Div ceil
-        const initial_want_block_count: usize = 1 + ((total_len - 1) / block_len);
-        // Div ceil
-        try want_blocks_bitfield.appendNTimes(0xff, 1 + ((initial_want_block_count - 1) / 8));
+        const initial_want_block_count: usize = utils.ceil(usize, total_len, block_len);
+        try want_blocks_bitfield.appendNTimes(0xff, utils.ceil(usize, initial_want_block_count, 8));
 
         return Pieces{
             .want_blocks_bitfield = want_blocks_bitfield,
