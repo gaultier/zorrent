@@ -5,7 +5,6 @@ const testing = std.testing;
 pub const block_len: usize = 1 << 14;
 
 pub const Pieces = struct {
-    prng: std.rand.DefaultPrng,
     want_blocks_bitfield: std.ArrayList(u8),
     allocator: *std.mem.Allocator,
     piece_acquire_mutex: std.Mutex,
@@ -15,10 +14,6 @@ pub const Pieces = struct {
     total_len: usize,
 
     pub fn init(total_len: usize, allocator: *std.mem.Allocator) !Pieces {
-        var buf: [8]u8 = undefined;
-        try std.crypto.randomBytes(buf[0..]);
-        const seed = std.mem.readIntLittle(u64, buf[0..8]);
-
         var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
         try want_blocks_bitfield.appendNTimes(0xff, utils.divCeil(usize, initial_want_block_count, 8));
@@ -26,7 +21,6 @@ pub const Pieces = struct {
         return Pieces{
             .want_blocks_bitfield = want_blocks_bitfield,
             .allocator = allocator,
-            .prng = std.rand.DefaultPrng.init(seed),
             .piece_acquire_mutex = std.Mutex{},
             .have_block_count = std.atomic.Int(usize).init(0),
             .want_block_count = std.atomic.Int(usize).init(initial_want_block_count),
