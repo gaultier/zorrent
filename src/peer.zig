@@ -117,9 +117,7 @@ pub const Peer = struct {
         return Peer{ .address = address, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
     }
 
-    pub fn connect(self: *Peer) !void {
-        self.socket = try std.net.tcpConnectToAddress(self.address);
-    }
+    pub fn connect(self: *Peer) !void {}
 
     pub fn deinit(self: *Peer) void {
         if (self.socket) |socket| socket.close();
@@ -198,8 +196,17 @@ pub const Peer = struct {
         defer self.recv_buffer.shrinkRetainingCapacity(0);
         try self.recv_buffer.appendSlice(&[_]u8{ 0, 0, 0, 0 });
 
-        var read_len = try self.socket.?.readAll(self.recv_buffer.items[0..4]);
-        if (read_len == 0) return null;
+        while (true) {
+            var read_len = self.socket.?.readAll(self.recv_buffer.items[0..4]) catch |err| {
+                std.log.err(.zorrent_lib, "{}\tRead failed ({})", .{ self.address, err });
+                self.retryConnect() catch continue;
+
+                break;
+            };
+
+            if (read_len == 0) return null;
+            break;
+        }
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
         if (announced_len == 0) {
@@ -273,13 +280,13 @@ pub const Peer = struct {
         std.log.notice(.zorrent_lib, "{}\tHandshaked", .{self.address});
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
+    fn retryConnect(self: *Peer) !void {
         std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
         while (true) {
-            self.connect() catch |err| {
+            self.socket = std.net.tcpConnectToAddress(self.address) catch |err| {
                 switch (err) {
                     error.ConnectionTimedOut, error.ConnectionRefused => {
-                        std.log.err(.zorrent_lib, "{}\tFailed ({})", .{ self.address, err });
+                        std.log.err(.zorrent_lib, "{}\tConnection failed ({})", .{ self.address, err });
                         std.time.sleep(3 * std.time.ns_per_s);
                         continue;
                     },
@@ -289,7 +296,10 @@ pub const Peer = struct {
             break;
         }
         std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
+    }
 
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
+        try self.retryConnect();
         try self.waitForHandshake(torrent_file);
         try self.sendInterested();
         try self.sendChoke();

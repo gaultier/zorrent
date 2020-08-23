@@ -23,7 +23,7 @@ $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019
   * [ ] Check hashes in parallel
   * [ ] Get peers from trackers in parallel
   * [ ] Pick up new peers while downloading from other peers
-  * [ ] Retry connecting to peers when disconnected
+  * [x] Retry connecting to peers when disconnected
 - [x] Multi-tracker (BEP-0012)
 - [x] Compact peer list from tracker (BEP-0023)
 - [ ] Better download algorithm: get rarest pieces first
