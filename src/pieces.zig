@@ -134,4 +134,8 @@ test "acquireFileOffset" {
 
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
     testing.expectEqual(@as(?usize, 0), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+
+    testing.expectEqual(@as(u8, 0b1111_1110), pieces.want_blocks_bitfield.items[0]);
+    testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
+    testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
 }
