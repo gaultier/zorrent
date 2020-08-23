@@ -280,7 +280,10 @@ pub const TorrentFile = struct {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
-        const local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
+        var local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6881);
+        try peers.append(try Peer.init(local_address, allocator)); // FIXME
+
+        local_address = std.net.Address.initIp4([4]u8{ 0, 0, 0, 0 }, 6961);
         try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
