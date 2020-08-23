@@ -79,7 +79,7 @@ fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_
     }
 }
 
-fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) void {
+fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) void {
     var j: u8 = 0;
     while (j < 8) : (j += 1) {
         const k: u3 = @as(u3, 7) - @intCast(u3, j);
@@ -89,7 +89,7 @@ fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: *std.ArrayLis
 
         if (has_piece_mask == 0) continue;
 
-        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, piece_len, total_len);
+        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield, piece, piece_len, total_len);
     }
 }
 
@@ -355,7 +355,7 @@ pub const Peer = struct {
                         std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
 
                         for (bitfield) |have, i| {
-                            markPiecesAsHaveFromBitfield(&remote_have_file_offsets_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
+                            markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield.items, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
                         defer self.allocator.free(bitfield);
                     },
