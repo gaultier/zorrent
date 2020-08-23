@@ -45,7 +45,7 @@ fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8
     // TODO: parallelize
     var all_valid = true;
     var piece: usize = 0;
-    while (piece < pieces_len - 1) : (piece += 1) {
+    while (piece < pieces_len) : (piece += 1) {
         const begin: usize = piece * piece_len;
         const expected_len: usize = piece_len;
 
@@ -301,7 +301,7 @@ pub const Peer = struct {
         defer remote_have_file_offsets_bitfield.deinit();
 
         errdefer if (file_offset_opt) |file_offset| {
-            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_blocks_bitfield.len });
+            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={}", .{ self.address, file_offset });
 
             pieces.releaseFileOffset(file_offset);
         };
