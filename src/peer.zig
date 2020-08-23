@@ -398,8 +398,6 @@ pub const Peer = struct {
                     },
                     else => {},
                 }
-            } else {
-                std.time.sleep(500_000_000);
             }
 
             if (file_offset_opt == null and !choked and !pieces.isFinished()) {

@@ -63,7 +63,6 @@ pub const Pieces = struct {
                     return file_offset;
                 }
             }
-            std.time.sleep(1_000);
         }
         return null;
     }
