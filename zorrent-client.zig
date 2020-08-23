@@ -38,10 +38,15 @@ pub fn main() anyerror!void {
     const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
 
     var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
-    var peers = try torrent_file.getPeers(allocator);
-    defer allocator.destroy(&peers);
 
-    if (peers.len == 0) return error.NoPeersAvailable; // TODO: sleep & retry
+    var peers: []zorrent.Peer = undefined;
+    while (true) {
+        peers = try torrent_file.getPeers(allocator);
+        if (peers.len > 0) break;
+
+        std.time.sleep(1 * std.time.ns_per_s);
+    }
+    defer allocator.destroy(&peers);
 
     var frames = std.ArrayList(@Frame(zorrent.Peer.handle)).init(allocator);
     defer frames.deinit();
