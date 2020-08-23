@@ -189,7 +189,8 @@ pub const Peer = struct {
 
         std.log.debug(.zorrent_lib, "requestBlock: piece={} file_offset={}", .{ piece, file_offset });
         const len = @intCast(u32, std.math.min(block_len, total_len - (piece * piece_len + begin)));
-        std.debug.assert(len <= piece_len);
+        std.debug.assert(len <= block_len);
+        std.debug.assert(begin + len <= piece_len);
 
         const payload_len = 1 + 3 * 4;
         var payload: [4 + payload_len]u8 = undefined;
@@ -328,7 +329,7 @@ pub const Peer = struct {
                 if (checkPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces, &pieces.want_blocks_bitfield, &pieces.want_block_count)) {
                     std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                     return;
-                }
+                } else continue;
             }
 
             const message = self.parseMessage() catch |err| {
