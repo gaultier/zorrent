@@ -79,9 +79,7 @@ fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_
     }
 }
 
-fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: *std.ArrayList(u8), remote_have_pieces_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) void {
-    remote_have_pieces_bitfield.items[have_bitfield_index] |= have_bitfield;
-
+fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: *std.ArrayList(u8), piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) void {
     var j: u8 = 0;
     while (j < 8) : (j += 1) {
         const k: u3 = @as(u3, 7) - @intCast(u3, j);
@@ -309,11 +307,6 @@ pub const Peer = struct {
         var file_offset_opt: ?usize = null;
         std.log.debug(.zorrent_lib, "stats: total_len={} block_len={} piece_len={}, pieces_count={} blocks_per_piece={} blocks_count={}", .{ torrent_file.total_len, block_len, torrent_file.piece_len, pieces_len, torrent_file.piece_len / block_len, pieces.initial_want_block_count });
 
-        var remote_have_pieces_bitfield = std.ArrayList(u8).init(self.allocator);
-        // TODO: deal with padding bytes?
-        try remote_have_pieces_bitfield.appendNTimes(0, pieces.initial_want_block_count);
-        defer remote_have_pieces_bitfield.deinit();
-
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
         try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.want_blocks_bitfield.len);
         defer remote_have_file_offsets_bitfield.deinit();
@@ -344,26 +337,25 @@ pub const Peer = struct {
                     Message.Choke => choked = true,
                     Message.Have => |piece| {
                         const byte_index: u32 = piece / 8;
-                        if (byte_index >= remote_have_pieces_bitfield.items.len) {
+                        if (byte_index > pieces_len) {
                             std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece, pieces_len });
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
-                        remote_have_pieces_bitfield.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
                         markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
+                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
                     },
                     Message.Bitfield => |bitfield| {
-                        if (bitfield.len > remote_have_pieces_bitfield.items.len) {
-                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, remote_have_pieces_bitfield.items.len });
+                        if (bitfield.len > pieces_len) {
+                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, pieces_len });
                             return error.InvalidMessage;
                         }
 
                         std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
 
                         for (bitfield) |have, i| {
-                            markPiecesAsHaveFromBitfield(&remote_have_file_offsets_bitfield, &remote_have_pieces_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
+                            markPiecesAsHaveFromBitfield(&remote_have_file_offsets_bitfield, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
                         defer self.allocator.free(bitfield);
                     },
