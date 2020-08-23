@@ -109,10 +109,14 @@ pub const Pieces = struct {
 };
 
 test "init" {
-    var pieces = try Pieces.init(35_000, testing.allocator);
+    var pieces = try Pieces.init(131_073, testing.allocator);
     defer pieces.deinit();
 
-    testing.expectEqual(pieces.want_block_count.get(), 3);
-    testing.expectEqual(pieces.have_block_count.get(), 0);
-    testing.expectEqual(pieces.total_len, 35_000);
+    testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
+    testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
+    testing.expectEqual(@as(usize, 131_073), pieces.total_len);
+
+    testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.items.len);
+    testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield.items[0]);
+    testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield.items[1]);
 }
