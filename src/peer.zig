@@ -199,9 +199,8 @@ pub const Peer = struct {
         while (true) {
             var read_len = self.socket.?.readAll(self.recv_buffer.items[0..4]) catch |err| {
                 std.log.err(.zorrent_lib, "{}\tRead failed ({})", .{ self.address, err });
-                self.retryConnect() catch continue;
-
-                break;
+                try self.retryConnect();
+                continue;
             };
 
             if (read_len == 0) return null;
