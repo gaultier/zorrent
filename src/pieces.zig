@@ -139,3 +139,19 @@ test "acquireFileOffset" {
     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
 }
+
+test "commitFileOffset" {
+    var pieces = try Pieces.init(131_073, testing.allocator);
+    defer pieces.deinit();
+
+    var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
+    defer remote_have_blocks_bitfield.deinit();
+    const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
+    try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+
+    remote_have_blocks_bitfield.items[0] = 0b0000_0001;
+    testing.expectEqual(@as(?usize, 0), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+
+    pieces.commitFileOffset(0);
+    testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
+}
