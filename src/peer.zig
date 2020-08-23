@@ -41,7 +41,7 @@ fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bo
     return identical;
 }
 
-fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8, hashes: []const u8, want_blocks_bitfield: *std.ArrayList(u8), want_block_count: *std.atomic.Int(usize)) bool {
+fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8, hashes: []const u8, want_blocks_bitfield: []u8, want_block_count: *std.atomic.Int(usize)) bool {
     // TODO: parallelize
     var all_valid = true;
     var piece: usize = 0;
@@ -65,7 +65,7 @@ fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8
     return all_valid;
 }
 
-fn markFileOffsetsFromPiece(bitfield: *std.ArrayList(u8), piece: u32, piece_len: usize, total_len: usize) void {
+fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
     var file_offset: usize = piece * piece_len;
 
     const size = std.math.min(total_len, (piece + 1) * piece_len);
@@ -75,7 +75,7 @@ fn markFileOffsetsFromPiece(bitfield: *std.ArrayList(u8), piece: u32, piece_len:
         const bit: u3 = @intCast(u3, block % 8);
 
         std.log.debug(.zorrent_lib, "markFileOffsetsFromPiece: piece={} file_offset={} block={} bit={}", .{ piece, file_offset, block, bit });
-        bitfield.items[block / 8] |= @as(u8, 1) << bit;
+        bitfield[block / 8] |= @as(u8, 1) << bit;
     }
 }
 
@@ -91,7 +91,7 @@ fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: *std.ArrayLis
 
         if (has_piece_mask == 0) continue;
 
-        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield, piece, piece_len, total_len);
+        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, piece_len, total_len);
     }
 }
 
@@ -315,18 +315,18 @@ pub const Peer = struct {
         defer remote_have_pieces_bitfield.deinit();
 
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
-        try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.want_blocks_bitfield.items.len);
+        try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.want_blocks_bitfield.len);
         defer remote_have_file_offsets_bitfield.deinit();
 
         errdefer if (file_offset_opt) |file_offset| {
-            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_blocks_bitfield.items.len });
+            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={} want_file_offsets_len={}", .{ self.address, file_offset, pieces.want_blocks_bitfield.len });
 
             pieces.releaseFileOffset(file_offset);
         };
 
         while (true) {
             if (pieces.isFinished()) {
-                if (checkPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces, &pieces.want_blocks_bitfield, &pieces.want_block_count)) {
+                if (checkPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces, pieces.want_blocks_bitfield, &pieces.want_block_count)) {
                     std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                     return;
                 } else continue;
@@ -351,7 +351,7 @@ pub const Peer = struct {
 
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                         remote_have_pieces_bitfield.items[byte_index] |= std.math.pow(u8, 2, @intCast(u8, (piece % 8)));
-                        markFileOffsetsFromPiece(&remote_have_file_offsets_bitfield, piece, torrent_file.piece_len, torrent_file.total_len);
+                        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={} remote_have_pieces_bitfield[]={}", .{ self.address, piece, byte_index, remote_have_pieces_bitfield.items[byte_index] });
                     },
                     Message.Bitfield => |bitfield| {
