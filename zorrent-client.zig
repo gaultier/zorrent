@@ -35,7 +35,10 @@ pub fn main() anyerror!void {
     const allocator = &arena.allocator;
 
     var args = try std.process.argsAlloc(allocator);
-    const arg = if (args.len == 2) args[1] else return error.MissingCliArgument;
+    const arg = if (args.len == 2) args[1] else {
+        try std.io.getStdOut().outStream().writeAll("zorrent <torrent file>\n");
+        return;
+    };
 
     var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
 
