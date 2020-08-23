@@ -66,9 +66,9 @@ fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8
 }
 
 fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
-    var file_offset: usize = piece * piece_len;
-
     const size = std.math.min(total_len, (piece + 1) * piece_len);
+
+    var file_offset: usize = piece * piece_len;
     while (file_offset < size) : (file_offset += block_len) {
         std.debug.assert(file_offset < total_len);
         const block: usize = file_offset / block_len;
@@ -122,9 +122,8 @@ pub const Peer = struct {
     }
 
     pub fn deinit(self: *Peer) void {
-        if (self.socket) |socket| {
-            socket.close();
-        }
+        if (self.socket) |socket| socket.close();
+
         self.recv_buffer.deinit();
     }
 
@@ -164,16 +163,7 @@ pub const Peer = struct {
         var payload: [block_len]u8 = undefined;
         std.debug.assert(n <= (block_len));
 
-        const len = self.socket.?.read(payload[0..n]) catch |err| {
-            std.log.err(.zorrent_lib, "{}\t{}", .{ self.address, err });
-            switch (err) {
-                error.ConnectionResetByPeer => {
-                    return 0;
-                },
-                else => return err,
-            }
-        };
-
+        const len = try self.socket.?.read(payload[0..n]);
         try self.recv_buffer.appendSlice(payload[0..len]);
 
         return len;
@@ -324,10 +314,7 @@ pub const Peer = struct {
                 } else continue;
             }
 
-            const message = self.parseMessage() catch |err| {
-                std.log.err(.zorrent_lib, "{}\tError parsing message: {}", .{ self.address, err });
-                return err;
-            };
+            const message = try self.parseMessage();
             if (message) |msg| {
                 std.log.debug(.zorrent_lib, "{}\tMessage: {}", .{ self.address, @tagName(msg) });
 

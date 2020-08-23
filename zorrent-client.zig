@@ -57,7 +57,10 @@ pub fn main() anyerror!void {
         frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, download_file.data, &pieces);
     }
 
-    for (frames.items) |*frame| {
-        _ = try await frame;
+    for (frames.items) |*frame, i| {
+        _ = await frame catch |err| {
+            const peer = peers[i];
+            std.log.err(.zorrent_client, "{}\t{}", .{ peer.address, err });
+        };
     }
 }

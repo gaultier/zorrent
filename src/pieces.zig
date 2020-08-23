@@ -40,7 +40,6 @@ pub const Pieces = struct {
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
-                std.log.debug(.zorrent_lib, "want={X} | have={X}\n", .{ self.want_blocks_bitfield, remote_have_file_offsets_bitfield });
 
                 for (self.want_blocks_bitfield) |*want, i| {
                     if (want.* == 0) continue;
