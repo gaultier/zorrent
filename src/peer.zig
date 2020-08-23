@@ -272,13 +272,12 @@ pub const Peer = struct {
         std.log.notice(.zorrent_lib, "{}\tHandshaking", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
-        var len: usize = try self.read(handshake_len);
         while (true) {
+            const len: usize = try self.read(handshake_len);
             if (len >= handshake_len and isHandshake(self.recv_buffer.items[0..handshake_len])) break;
 
             self.recv_buffer.shrinkRetainingCapacity(0);
             std.time.sleep(1_000_000_000);
-            len = try self.read(handshake_len);
         }
         self.recv_buffer.shrinkRetainingCapacity(0);
         std.log.notice(.zorrent_lib, "{}\tHandshaked", .{self.address});
