@@ -51,6 +51,7 @@ pub fn main() anyerror!void {
     defer download_file.deinit();
 
     var pieces = try zorrent.Pieces.init(torrent_file.total_len, allocator);
+    defer pieces.deinit();
 
     for (peers) |*peer| {
         frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, download_file.data, &pieces);

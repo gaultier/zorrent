@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
+const testing = std.testing;
 
 pub const block_len: usize = 1 << 14;
 
@@ -35,7 +36,6 @@ pub const Pieces = struct {
     }
 
     pub fn deinit(self: *Pieces) void {
-        self.piece_acquire_mutex.deinit();
         self.want_blocks_bitfield.deinit();
     }
 
@@ -113,3 +113,8 @@ pub const Pieces = struct {
         return;
     }
 };
+
+test "acquireFileOffset" {
+    var pieces = try Pieces.init(100, testing.allocator);
+    defer pieces.deinit();
+}
