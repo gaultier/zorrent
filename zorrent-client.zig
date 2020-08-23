@@ -44,7 +44,7 @@ pub fn main() anyerror!void {
         peers = try torrent_file.getPeers(allocator);
         if (peers.len > 0) break;
 
-        std.time.sleep(1 * std.time.ns_per_s);
+        std.time.sleep(3 * std.time.ns_per_s);
     }
     defer allocator.destroy(&peers);
 

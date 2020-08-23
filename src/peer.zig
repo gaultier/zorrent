@@ -275,15 +275,19 @@ pub const Peer = struct {
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
         std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
-        self.connect() catch |err| {
-            switch (err) {
-                error.ConnectionTimedOut, error.ConnectionRefused => {
-                    std.log.err(.zorrent_lib, "{}\tFailed ({})", .{ self.address, err });
-                    return;
-                },
-                else => return err,
-            }
-        };
+        while (true) {
+            self.connect() catch |err| {
+                switch (err) {
+                    error.ConnectionTimedOut, error.ConnectionRefused => {
+                        std.log.err(.zorrent_lib, "{}\tFailed ({})", .{ self.address, err });
+                        std.time.sleep(3 * std.time.ns_per_s);
+                        continue;
+                    },
+                    else => return err,
+                }
+            };
+            break;
+        }
         std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
 
         try self.waitForHandshake(torrent_file);
