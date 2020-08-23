@@ -108,7 +108,11 @@ pub const Pieces = struct {
     }
 };
 
-test "acquireFileOffset" {
-    var pieces = try Pieces.init(100, testing.allocator);
+test "init" {
+    var pieces = try Pieces.init(35_000, testing.allocator);
     defer pieces.deinit();
+
+    testing.expectEqual(pieces.want_block_count.get(), 3);
+    testing.expectEqual(pieces.have_block_count.get(), 0);
+    testing.expectEqual(pieces.total_len, 35_000);
 }
