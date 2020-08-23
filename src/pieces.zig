@@ -62,6 +62,7 @@ pub const Pieces = struct {
                     std.log.debug(.zorrent_lib, "acquireFileOffset: overlap={} bit={} i={} file_offset={}", .{ want.* & remote, bit, i, file_offset });
                     return file_offset;
                 }
+                break;
             }
         }
         return null;
