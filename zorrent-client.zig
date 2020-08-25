@@ -58,7 +58,7 @@ pub fn main() anyerror!void {
     var download_file = try zorrent.openMmapFile(torrent_file.path, torrent_file.total_len);
     defer download_file.deinit();
 
-    var pieces = try zorrent.Pieces.init(torrent_file.total_len, allocator);
+    var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, allocator);
     defer pieces.deinit();
 
     for (peers) |*peer| {

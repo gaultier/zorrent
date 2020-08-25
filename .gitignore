@@ -2,4 +2,7 @@ zig-cache
 *.jpg
 *.pdf
 CHECKSUM
+*.lzma
+*.img
+*.qcow*
 *.iso

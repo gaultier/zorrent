@@ -31,68 +31,6 @@ fn isHandshake(buffer: []const u8) bool {
     return (buffer.len == handshake_len and std.mem.eql(u8, "\x13BitTorrent protocol", buffer[0..20]));
 }
 
-fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
-    const expected_hash = hashes[piece * 20 .. (piece + 1) * 20];
-    var actual_hash: [20]u8 = undefined;
-    std.crypto.Sha1.hash(piece_data[0..], actual_hash[0..]);
-    const identical = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
-
-    std.log.debug(.zorrent_lib, "isPieceHashValid: piece={} actual_hash={X} expected_hash={X} matching_hash={}", .{ piece, actual_hash, expected_hash, identical });
-    return identical;
-}
-
-fn checkPiecesValid(pieces_len: usize, piece_len: usize, file_buffer: []const u8, hashes: []const u8, want_blocks_bitfield: []u8, want_block_count: *std.atomic.Int(usize)) bool {
-    // TODO: parallelize
-    var all_valid = true;
-    var piece: usize = 0;
-    while (piece < pieces_len) : (piece += 1) {
-        const begin: usize = piece * piece_len;
-        const expected_len: usize = piece_len;
-
-        if (!isPieceHashValid(piece, file_buffer[begin..std.math.min(file_buffer.len, begin + expected_len)], hashes)) {
-            all_valid = false;
-            std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
-
-            markFileOffsetsFromPiece(want_blocks_bitfield, @intCast(u32, piece), pieces_len, file_buffer.len);
-            _ = want_block_count.incr();
-
-            // TODO: re-fetch piece
-        } else {
-            std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
-        }
-    }
-
-    return all_valid;
-}
-
-fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
-    const size = std.math.min(total_len, (piece + 1) * piece_len);
-
-    var file_offset: usize = piece * piece_len;
-    while (file_offset < size) : (file_offset += block_len) {
-        std.debug.assert(file_offset < total_len);
-        const block: usize = file_offset / block_len;
-        const bit: u3 = @intCast(u3, block % 8);
-
-        std.log.debug(.zorrent_lib, "markFileOffsetsFromPiece: piece={} file_offset={} block={} bit={}", .{ piece, file_offset, block, bit });
-        bitfield[block / 8] |= @as(u8, 1) << bit;
-    }
-}
-
-fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, piece_len: usize, have_bitfield: u8, have_bitfield_index: usize, total_len: usize) void {
-    var j: u8 = 0;
-    while (j < 8) : (j += 1) {
-        const k: u3 = @as(u3, 7) - @intCast(u3, j);
-        const shift: u3 = @as(u3, k);
-        const piece: u32 = @intCast(u32, have_bitfield_index) * 8 + j;
-        const has_piece_mask = (have_bitfield & (@as(u8, 1) << shift));
-
-        if (has_piece_mask == 0) continue;
-
-        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield, piece, piece_len, total_len);
-    }
-}
-
 pub const MessageId = enum(u8) {
     Choke = 0,
     Unchoke = 1,
@@ -321,7 +259,7 @@ pub const Peer = struct {
 
         while (true) {
             if (pieces.isFinished()) {
-                if (checkPiecesValid(pieces_len, torrent_file.piece_len, file_buffer, torrent_file.pieces, pieces.want_blocks_bitfield, &pieces.want_block_count)) {
+                if (pieces.checkPiecesValid(pieces_len, file_buffer, torrent_file.pieces)) {
                     std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                     return;
                 } else continue;
@@ -342,7 +280,7 @@ pub const Peer = struct {
                         }
 
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
-                        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
+                        pieces_mod.markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
                     },
                     Message.Bitfield => |bitfield| {
@@ -354,7 +292,7 @@ pub const Peer = struct {
                         std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
 
                         for (bitfield) |have, i| {
-                            markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield.items, torrent_file.piece_len, have, i, torrent_file.total_len);
+                            pieces_mod.markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield.items, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
                         defer self.allocator.free(bitfield);
                     },
