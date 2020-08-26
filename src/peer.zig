@@ -55,22 +55,20 @@ pub const Peer = struct {
         return Peer{ .address = address, .socket = null, .recv_buffer = recv_buffer, .allocator = allocator };
     }
 
-    pub fn connect(self: *Peer) !void {}
-
     pub fn deinit(self: *Peer) void {
         if (self.socket) |socket| socket.close();
 
         self.recv_buffer.deinit();
     }
 
-    pub fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
+    fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(hash_info[0..]);
         try self.sendPeerId();
     }
 
-    pub fn sendInterested(self: *Peer) !void {
+    fn sendInterested(self: *Peer) !void {
         var msg: [5]u8 = undefined;
 
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
@@ -80,7 +78,7 @@ pub const Peer = struct {
         std.log.notice(.zorrent_lib, "{}\tInterested", .{self.address});
     }
 
-    pub fn sendChoke(self: *Peer) !void {
+    fn sendChoke(self: *Peer) !void {
         var msg: [5]u8 = undefined;
 
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
@@ -90,12 +88,12 @@ pub const Peer = struct {
         std.log.notice(.zorrent_lib, "{}\tChoke", .{self.address});
     }
 
-    pub fn sendPeerId(self: *Peer) !void {
+    fn sendPeerId(self: *Peer) !void {
         const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
         try self.socket.?.writeAll(peer_id[0..]);
     }
 
-    pub fn read(self: *Peer, n: usize) !usize {
+    fn read(self: *Peer, n: usize) !usize {
         var payload: [block_len]u8 = undefined;
         std.debug.assert(n <= (block_len));
 
@@ -105,7 +103,7 @@ pub const Peer = struct {
         return len;
     }
 
-    pub fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32, total_len: usize) !void {
+    fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32, total_len: usize) !void {
         std.debug.assert(file_offset < total_len);
         const piece: u32 = @intCast(u32, file_offset / piece_len);
         const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, piece_len));
@@ -130,14 +128,14 @@ pub const Peer = struct {
         std.log.debug(.zorrent_lib, "{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}", .{ self.address, piece, begin, file_offset, piece_len, len });
     }
 
-    pub fn parseMessage(self: *Peer) !?Message {
+    fn parseMessage(self: *Peer, pieces: *Pieces) !?Message {
         defer self.recv_buffer.shrinkRetainingCapacity(0);
         try self.recv_buffer.appendSlice(&[_]u8{ 0, 0, 0, 0 });
 
-        while (true) {
+        while (!pieces.isFinished()) {
             var read_len = self.socket.?.readAll(self.recv_buffer.items[0..4]) catch |err| {
                 std.log.err(.zorrent_lib, "{}\tRead failed ({})", .{ self.address, err });
-                try self.retryConnect();
+                try self.retryConnect(pieces);
                 continue;
             };
 
@@ -202,11 +200,11 @@ pub const Peer = struct {
         };
     }
 
-    fn waitForHandshake(self: *Peer, torrent_file: TorrentFile) !void {
+    fn waitForHandshake(self: *Peer, torrent_file: TorrentFile, pieces: *Pieces) !void {
         std.log.notice(.zorrent_lib, "{}\tHandshaking", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
-        while (true) {
+        while (!pieces.isFinished()) {
             const len: usize = try self.read(handshake_len);
             if (len >= handshake_len and isHandshake(self.recv_buffer.items[0..handshake_len])) break;
 
@@ -217,9 +215,9 @@ pub const Peer = struct {
         std.log.notice(.zorrent_lib, "{}\tHandshaked", .{self.address});
     }
 
-    fn retryConnect(self: *Peer) !void {
+    fn retryConnect(self: *Peer, pieces: *Pieces) !void {
         std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
-        while (true) {
+        while (!pieces.isFinished()) {
             self.socket = std.net.tcpConnectToAddress(self.address) catch |err| {
                 switch (err) {
                     error.ConnectionTimedOut, error.ConnectionRefused => {
@@ -236,8 +234,8 @@ pub const Peer = struct {
     }
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
-        try self.retryConnect();
-        try self.waitForHandshake(torrent_file);
+        try self.retryConnect(pieces);
+        try self.waitForHandshake(torrent_file, pieces);
         try self.sendInterested();
         try self.sendChoke();
 
@@ -265,7 +263,7 @@ pub const Peer = struct {
                 } else continue;
             }
 
-            const message = try self.parseMessage();
+            const message = try self.parseMessage(pieces);
             if (message) |msg| {
                 std.log.debug(.zorrent_lib, "{}\tMessage: {}", .{ self.address, @tagName(msg) });
 
