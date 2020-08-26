@@ -51,6 +51,16 @@ pub const Pieces = struct {
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
         try want_blocks_bitfield.appendNTimes(0xff, utils.divCeil(usize, initial_want_block_count, 8));
 
+        // Pad with 0
+        {
+            var bit: u8 = 8 - @intCast(u8, initial_want_block_count % 8);
+            while (bit < 8) : (bit += 1) {
+                const k: u3 = @intCast(u3, bit);
+                const mask: u8 = @as(u8, 1) << k;
+                want_blocks_bitfield.items[want_blocks_bitfield.items.len - 1] &= mask;
+            }
+        }
+
         var pieces_valid = std.ArrayList(u8).init(allocator);
         errdefer pieces_valid.deinit();
         const pieces_count = utils.divCeil(usize, total_len, piece_len);
@@ -87,11 +97,12 @@ pub const Pieces = struct {
                 defer lock.release();
 
                 for (self.want_blocks_bitfield) |*want, i| {
-                    if (want.* == 0) continue;
+                    const w: u8 = std.mem.nativeToBig(u8, want.*);
+                    if (w == 0) continue;
                     const remote = remote_have_file_offsets_bitfield[i];
-                    if ((want.* & remote) == 0) continue;
+                    if ((w & remote) == 0) continue;
 
-                    const bit: u3 = @intCast(u3, @ctz(u8, want.* & remote));
+                    const bit: u3 = @intCast(u3, std.mem.bigToNative(u8, @clz(u8, w & remote)));
                     const block = i * 8 + bit;
                     std.debug.assert(block < self.initial_want_block_count);
 
@@ -99,11 +110,12 @@ pub const Pieces = struct {
                     std.debug.assert(file_offset < self.total_len);
 
                     // Clear bit
-                    want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << bit));
+                    const shift = 7 - bit;
+                    want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << shift));
 
                     _ = self.want_block_count.decr();
 
-                    std.log.debug(.zorrent_lib, "acquireFileOffset: overlap={} bit={} i={} file_offset={}", .{ want.* & remote, bit, i, file_offset });
+                    std.log.debug(.zorrent_lib, "acquireFileOffset: overlap={} bit={} i={} file_offset={}", .{ w & remote, bit, i, file_offset });
                     return file_offset;
                 }
                 break;
@@ -211,6 +223,11 @@ pub const Pieces = struct {
         defer file.close();
 
         _ = try file.readAll(self.want_blocks_bitfield);
+
+        self.want_block_count.set(0);
+        for (self.want_blocks_bitfield) |w| {
+            _ = self.want_block_count.fetchAdd(@popCount(u8, w));
+        }
     }
 };
 
@@ -225,7 +242,7 @@ test "init" {
 
     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
     testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[0]);
-    testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[1]);
+    testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
 }
 
 test "acquireFileOffset" {
@@ -241,10 +258,10 @@ test "acquireFileOffset" {
 
     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-    remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-    testing.expectEqual(@as(?usize, 0), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    remote_have_blocks_bitfield.items[0] = 0b0001_0001;
+    testing.expectEqual(@as(?usize, 3 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-    testing.expectEqual(@as(u8, 0b1111_1110), pieces.want_blocks_bitfield[0]);
+    testing.expectEqual(@as(u8, 0b1110_1111), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
 }
@@ -261,13 +278,13 @@ test "commitFileOffset" {
     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-    testing.expectEqual(@as(?usize, 0), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, 7 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     pieces.commitFileOffset(0);
     testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
 }
 
-test "commitFileOffset" {
+test "releaseFileOffset" {
     std.os.unlink(file_name) catch {};
 
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
@@ -279,7 +296,7 @@ test "commitFileOffset" {
     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-    testing.expectEqual(@as(?usize, 0), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, 7 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     pieces.releaseFileOffset(0);
     testing.expectEqual(@as(u8, 0b1111_1111), pieces.want_blocks_bitfield[0]);
@@ -313,13 +330,19 @@ test "writeStateToFile" {
 
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
+    testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
+    testing.expectEqual(@as(usize, 0b1111_1111), pieces.want_blocks_bitfield[0]);
+    testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
+    testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
 
-    pieces.want_blocks_bitfield[0] = 0xab;
+    pieces.want_blocks_bitfield[0] = 0b1111_1110;
+    pieces.want_block_count.set(8);
     try pieces.writeStateToFile();
 
     const want_blocks_bitfield = try pieces.readStateFromFile();
 
     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
-    testing.expectEqual(@as(usize, 0xab), pieces.want_blocks_bitfield[0]);
-    testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[1]);
+    testing.expectEqual(@as(usize, 0b1111_1110), pieces.want_blocks_bitfield[0]);
+    testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
+    testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
 }
