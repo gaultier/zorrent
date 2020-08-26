@@ -81,6 +81,7 @@ pub const Pieces = struct {
         };
 
         try pieces.readStateFromFile();
+        pieces.have_block_count.set(initial_want_block_count - pieces.want_block_count.get());
 
         return pieces;
     }
@@ -234,6 +235,8 @@ test "init" {
     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
     testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
+
+    std.os.unlink(file_name) catch {};
 }
 
 test "acquireFileOffset" {
@@ -255,6 +258,8 @@ test "acquireFileOffset" {
     testing.expectEqual(@as(u8, 0b1110_1111), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
+
+    std.os.unlink(file_name) catch {};
 }
 
 test "commitFileOffset" {
@@ -273,6 +278,8 @@ test "commitFileOffset" {
 
     pieces.commitFileOffset(0);
     testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
+
+    std.os.unlink(file_name) catch {};
 }
 
 test "releaseFileOffset" {
@@ -293,6 +300,8 @@ test "releaseFileOffset" {
     testing.expectEqual(@as(u8, 0b1111_1111), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
+
+    std.os.unlink(file_name) catch {};
 }
 
 test "isFinished" {
@@ -314,6 +323,8 @@ test "isFinished" {
     testing.expectEqual(true, pieces.isFinished());
     testing.expectEqual(@as(usize, 0), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 9), pieces.have_block_count.get());
+
+    std.os.unlink(file_name) catch {};
 }
 
 test "writeStateToFile" {
@@ -325,9 +336,11 @@ test "writeStateToFile" {
     testing.expectEqual(@as(usize, 0b1111_1111), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
     testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
+    testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
 
     pieces.want_blocks_bitfield[0] = 0b1111_1110;
     pieces.want_block_count.set(8);
+    pieces.have_block_count.set(1);
     try pieces.writeStateToFile();
 
     const want_blocks_bitfield = try pieces.readStateFromFile();
@@ -336,6 +349,7 @@ test "writeStateToFile" {
     testing.expectEqual(@as(usize, 0b1111_1110), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
+    testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
     defer remote_have_blocks_bitfield.deinit();
@@ -346,4 +360,6 @@ test "writeStateToFile" {
 
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+
+    std.os.unlink(file_name) catch {};
 }
