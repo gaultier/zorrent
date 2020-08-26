@@ -336,4 +336,14 @@ test "writeStateToFile" {
     testing.expectEqual(@as(usize, 0b1111_1110), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
+
+    var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
+    defer remote_have_blocks_bitfield.deinit();
+    const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
+    try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+
+    testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+
+    remote_have_blocks_bitfield.items[0] = 0b0000_0001;
+    testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 }
