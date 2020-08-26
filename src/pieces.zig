@@ -44,6 +44,7 @@ pub const Pieces = struct {
     want_block_count: std.atomic.Int(usize),
     total_len: usize,
     piece_len: usize,
+    state_file: std.fs.File,
 
     pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
@@ -76,6 +77,7 @@ pub const Pieces = struct {
             .total_len = total_len,
             .piece_len = piece_len,
             .pieces_valid = pieces_valid.toOwnedSlice(),
+            .state_file = try std.fs.cwd().createFile(file_name, std.fs.File.CreateFlags{ .read = true }),
         };
 
         try pieces.readStateFromFile();
@@ -86,6 +88,7 @@ pub const Pieces = struct {
     pub fn deinit(self: *Pieces) void {
         self.allocator.free(self.want_blocks_bitfield);
         self.allocator.free(self.pieces_valid);
+        self.state_file.close();
     }
 
     pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
@@ -206,23 +209,11 @@ pub const Pieces = struct {
     }
 
     fn writeStateToFile(self: *Pieces) !void {
-        var file = try std.fs.cwd().createFile(file_name, std.fs.File.CreateFlags{ .truncate = true });
-        defer file.close();
-
-        try file.writeAll(self.want_blocks_bitfield);
+        try self.state_file.writeAll(self.want_blocks_bitfield[0..]);
     }
 
     fn readStateFromFile(self: *Pieces) !void {
-        var file = std.fs.cwd().openFile(file_name, std.fs.File.OpenFlags{ .read = true }) catch |err| {
-            const e = @errSetCast(std.fs.File.OpenError, err);
-            switch (e) {
-                std.fs.File.OpenError.FileNotFound => return,
-                else => return err,
-            }
-        };
-        defer file.close();
-
-        _ = try file.readAll(self.want_blocks_bitfield);
+        _ = try self.state_file.readAll(self.want_blocks_bitfield[0..]);
 
         self.want_block_count.set(0);
         for (self.want_blocks_bitfield) |w| {
