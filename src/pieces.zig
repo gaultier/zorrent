@@ -180,10 +180,24 @@ pub const Pieces = struct {
 
         return all_valid;
     }
+
+    fn writeStateToFile(self: *Pieces) !void {
+        var file = try std.fs.cwd().createFile(".zorrent_state", std.fs.File.CreateFlags{ .truncate = true });
+        defer file.close();
+
+        try file.writeAll(self.want_blocks_bitfield);
+    }
+
+    fn readStateToFile(self: *Pieces) !void {
+        var file = try std.fs.cwd().openFile(".zorrent_state", std.fs.File.OpenFlags{ .read = true });
+        defer file.close();
+
+        _ = try file.readAll(self.want_blocks_bitfield);
+    }
 };
 
 test "init" {
-    var pieces = try Pieces.init(131_073, testing.allocator);
+    var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
     testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
@@ -196,7 +210,7 @@ test "init" {
 }
 
 test "acquireFileOffset" {
-    var pieces = try Pieces.init(131_073, testing.allocator);
+    var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -215,7 +229,7 @@ test "acquireFileOffset" {
 }
 
 test "commitFileOffset" {
-    var pieces = try Pieces.init(131_073, testing.allocator);
+    var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -231,7 +245,7 @@ test "commitFileOffset" {
 }
 
 test "commitFileOffset" {
-    var pieces = try Pieces.init(131_073, testing.allocator);
+    var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -249,7 +263,7 @@ test "commitFileOffset" {
 }
 
 test "isFinished" {
-    var pieces = try Pieces.init(131_073, testing.allocator);
+    var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -265,4 +279,18 @@ test "isFinished" {
     testing.expectEqual(true, pieces.isFinished());
     testing.expectEqual(@as(usize, 0), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 9), pieces.have_block_count.get());
+}
+
+test "writeStateToFile" {
+    var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
+    defer pieces.deinit();
+
+    pieces.want_blocks_bitfield[0] = 0xab;
+    try pieces.writeStateToFile();
+
+    const want_blocks_bitfield = try pieces.readStateToFile();
+
+    testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
+    testing.expectEqual(@as(usize, 0xab), pieces.want_blocks_bitfield[0]);
+    testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[1]);
 }
