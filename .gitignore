@@ -6,3 +6,4 @@ CHECKSUM
 *.img
 *.qcow*
 *.iso
+.zorrent_state
