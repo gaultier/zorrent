@@ -4,6 +4,8 @@ const testing = std.testing;
 
 pub const block_len: usize = 1 << 14;
 
+const file_name = ".zorrent_state";
+
 pub fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
     const size = std.math.min(total_len, (piece + 1) * piece_len);
 
@@ -45,14 +47,16 @@ pub const Pieces = struct {
 
     pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
         var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
+        errdefer want_blocks_bitfield.deinit();
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
         try want_blocks_bitfield.appendNTimes(0xff, utils.divCeil(usize, initial_want_block_count, 8));
 
         var pieces_valid = std.ArrayList(u8).init(allocator);
+        errdefer pieces_valid.deinit();
         const pieces_count = utils.divCeil(usize, total_len, piece_len);
         try pieces_valid.appendNTimes(0, utils.divCeil(usize, pieces_count, 8));
 
-        return Pieces{
+        var pieces = Pieces{
             .want_blocks_bitfield = want_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
@@ -63,6 +67,10 @@ pub const Pieces = struct {
             .piece_len = piece_len,
             .pieces_valid = pieces_valid.toOwnedSlice(),
         };
+
+        try pieces.readStateFromFile();
+
+        return pieces;
     }
 
     pub fn deinit(self: *Pieces) void {
@@ -108,6 +116,10 @@ pub const Pieces = struct {
         std.debug.assert(file_offset < self.total_len);
         const count = self.have_block_count.incr();
         std.debug.assert(count <= self.initial_want_block_count);
+
+        self.writeStateToFile() catch |err| {
+            std.log.warn(.zorrent_lib, "Could not save state to file: {}", .{err});
+        };
     }
 
     pub fn isFinished(self: *Pieces) bool {
@@ -182,14 +194,20 @@ pub const Pieces = struct {
     }
 
     fn writeStateToFile(self: *Pieces) !void {
-        var file = try std.fs.cwd().createFile(".zorrent_state", std.fs.File.CreateFlags{ .truncate = true });
+        var file = try std.fs.cwd().createFile(file_name, std.fs.File.CreateFlags{ .truncate = true });
         defer file.close();
 
         try file.writeAll(self.want_blocks_bitfield);
     }
 
-    fn readStateToFile(self: *Pieces) !void {
-        var file = try std.fs.cwd().openFile(".zorrent_state", std.fs.File.OpenFlags{ .read = true });
+    fn readStateFromFile(self: *Pieces) !void {
+        var file = std.fs.cwd().openFile(file_name, std.fs.File.OpenFlags{ .read = true }) catch |err| {
+            const e = @errSetCast(std.fs.File.OpenError, err);
+            switch (e) {
+                std.fs.File.OpenError.FileNotFound => return,
+                else => return err,
+            }
+        };
         defer file.close();
 
         _ = try file.readAll(self.want_blocks_bitfield);
@@ -197,6 +215,7 @@ pub const Pieces = struct {
 };
 
 test "init" {
+    std.os.unlink(file_name) catch {};
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -210,6 +229,8 @@ test "init" {
 }
 
 test "acquireFileOffset" {
+    std.os.unlink(file_name) catch {};
+
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -229,6 +250,8 @@ test "acquireFileOffset" {
 }
 
 test "commitFileOffset" {
+    std.os.unlink(file_name) catch {};
+
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -245,6 +268,8 @@ test "commitFileOffset" {
 }
 
 test "commitFileOffset" {
+    std.os.unlink(file_name) catch {};
+
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -263,6 +288,8 @@ test "commitFileOffset" {
 }
 
 test "isFinished" {
+    std.os.unlink(file_name) catch {};
+
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -282,13 +309,15 @@ test "isFinished" {
 }
 
 test "writeStateToFile" {
+    std.os.unlink(file_name) catch {};
+
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
     pieces.want_blocks_bitfield[0] = 0xab;
     try pieces.writeStateToFile();
 
-    const want_blocks_bitfield = try pieces.readStateToFile();
+    const want_blocks_bitfield = try pieces.readStateFromFile();
 
     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
     testing.expectEqual(@as(usize, 0xab), pieces.want_blocks_bitfield[0]);
