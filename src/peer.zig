@@ -62,6 +62,8 @@ pub const Peer = struct {
     }
 
     fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
+        std.debug.assert(self.socket != null);
+
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
         try self.socket.?.writeAll(hash_info[0..]);
@@ -69,6 +71,8 @@ pub const Peer = struct {
     }
 
     fn sendInterested(self: *Peer) !void {
+        std.debug.assert(self.socket != null);
+
         var msg: [5]u8 = undefined;
 
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
@@ -79,6 +83,8 @@ pub const Peer = struct {
     }
 
     fn sendChoke(self: *Peer) !void {
+        std.debug.assert(self.socket != null);
+
         var msg: [5]u8 = undefined;
 
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &msg), 1);
@@ -89,11 +95,15 @@ pub const Peer = struct {
     }
 
     fn sendPeerId(self: *Peer) !void {
+        std.debug.assert(self.socket != null);
+
         const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
         try self.socket.?.writeAll(peer_id[0..]);
     }
 
     fn read(self: *Peer, n: usize) !usize {
+        std.debug.assert(self.socket != null);
+
         var payload: [block_len]u8 = undefined;
         std.debug.assert(n <= (block_len));
 
@@ -104,6 +114,8 @@ pub const Peer = struct {
     }
 
     fn requestBlock(self: *Peer, file_offset: usize, piece_len: u32, total_len: usize) !void {
+        std.debug.assert(self.socket != null);
+
         std.debug.assert(file_offset < total_len);
         const piece: u32 = @intCast(u32, file_offset / piece_len);
         const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, piece_len));
@@ -129,6 +141,8 @@ pub const Peer = struct {
     }
 
     fn parseMessage(self: *Peer, pieces: *Pieces) !?Message {
+        std.debug.assert(self.socket != null);
+
         defer self.recv_buffer.shrinkRetainingCapacity(0);
         try self.recv_buffer.appendSlice(&[_]u8{ 0, 0, 0, 0 });
 
@@ -201,6 +215,8 @@ pub const Peer = struct {
     }
 
     fn waitForHandshake(self: *Peer, torrent_file: TorrentFile, pieces: *Pieces) !void {
+        std.debug.assert(self.socket != null);
+
         std.log.notice(.zorrent_lib, "{}\tHandshaking", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
@@ -228,6 +244,8 @@ pub const Peer = struct {
                     else => return err,
                 }
             };
+            std.debug.assert(self.socket != null);
+
             break;
         }
         std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
@@ -235,6 +253,8 @@ pub const Peer = struct {
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
         try self.retryConnect(pieces);
+        std.debug.assert(self.socket != null);
+
         try self.waitForHandshake(torrent_file, pieces);
         try self.sendInterested();
         try self.sendChoke();
