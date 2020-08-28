@@ -253,7 +253,6 @@ pub const Peer = struct {
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
         try self.retryConnect(pieces);
-        std.debug.assert(self.socket != null);
 
         try self.waitForHandshake(torrent_file, pieces);
         try self.sendInterested();
@@ -276,7 +275,7 @@ pub const Peer = struct {
         };
 
         while (true) {
-            if (pieces.isFinished()) {
+            if (pieces.downloadedAllPieces()) {
                 if (pieces.checkPiecesValid(pieces_len, file_buffer, torrent_file.pieces)) {
                     std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                     return;
@@ -347,7 +346,7 @@ pub const Peer = struct {
                 }
             }
 
-            if (file_offset_opt == null and !choked and !pieces.isFinished()) {
+            if (file_offset_opt == null and !choked and !pieces.downloadedAllPieces()) {
                 file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);

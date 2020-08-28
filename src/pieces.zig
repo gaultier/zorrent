@@ -45,6 +45,7 @@ pub const Pieces = struct {
     total_len: usize,
     piece_len: usize,
     state_file: utils.MmapFile,
+    valid_block_count: std.atomic.Int(usize),
 
     pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
@@ -85,11 +86,10 @@ pub const Pieces = struct {
             .piece_len = piece_len,
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .state_file = state_file,
+            .valid_block_count = std.atomic.Int(usize).init(0),
         };
 
         pieces.have_block_count.set(initial_want_block_count - pieces.want_block_count.get());
-
-        std.log.debug(.zorrent_lib, "pieces init: want={X} want_block_count={}", .{ pieces.want_blocks_bitfield, pieces.want_block_count.get() });
 
         return pieces;
     }
@@ -143,8 +143,12 @@ pub const Pieces = struct {
         std.debug.assert(count <= self.initial_want_block_count);
     }
 
-    pub fn isFinished(self: *Pieces) bool {
+    pub fn downloadedAllPieces(self: *Pieces) bool {
         return self.initial_want_block_count == self.have_block_count.get();
+    }
+
+    pub fn isFinished(self: *Pieces) bool {
+        return self.initial_want_block_count == self.valid_block_count.get();
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
@@ -188,17 +192,18 @@ pub const Pieces = struct {
 
     pub fn checkPiecesValid(self: *Pieces, pieces_len: usize, file_buffer: []const u8, hashes: []const u8) bool {
         // TODO: parallelize
-        var all_valid = true;
         var piece: usize = 0;
         while (piece < pieces_len) : (piece += 1) {
             const begin: usize = piece * self.piece_len;
             const expected_len: usize = self.piece_len;
             const bit: u3 = @intCast(u3, piece % 8);
             const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
-            if (is_piece_valid) continue;
+            if (is_piece_valid) {
+                _ = self.valid_block_count.incr();
+                continue;
+            }
 
             if (!isPieceHashValid(piece, file_buffer[begin..std.math.min(file_buffer.len, begin + expected_len)], hashes)) {
-                all_valid = false;
                 std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
 
                 markFileOffsetsFromPiece(self.want_blocks_bitfield, @intCast(u32, piece), pieces_len, file_buffer.len);
@@ -211,7 +216,7 @@ pub const Pieces = struct {
             }
         }
 
-        return all_valid;
+        return self.valid_block_count.get() == self.initial_want_block_count;
     }
 };
 
