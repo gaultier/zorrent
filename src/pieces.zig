@@ -143,7 +143,7 @@ pub const Pieces = struct {
         std.debug.assert(count <= self.initial_want_block_count);
     }
 
-    pub fn downloadedAllPieces(self: *Pieces) bool {
+    pub fn downloadedAllBlocks(self: *Pieces) bool {
         return self.initial_want_block_count == self.have_block_count.get();
     }
 

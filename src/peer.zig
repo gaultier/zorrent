@@ -275,7 +275,7 @@ pub const Peer = struct {
         };
 
         while (true) {
-            if (pieces.downloadedAllPieces()) {
+            if (pieces.downloadedAllBlocks()) {
                 if (pieces.checkPiecesValid(pieces_len, file_buffer, torrent_file.pieces)) {
                     std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
                     return;
@@ -346,7 +346,7 @@ pub const Peer = struct {
                 }
             }
 
-            if (file_offset_opt == null and !choked and !pieces.downloadedAllPieces()) {
+            if (file_offset_opt == null and !choked and !pieces.downloadedAllBlocks()) {
                 file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
