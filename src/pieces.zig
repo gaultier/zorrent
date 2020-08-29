@@ -209,7 +209,6 @@ pub const Pieces = struct {
                         var j: usize = 0;
                         while (j < blocks_count) : (j += 1) {
                             const have = self.have_block_count.decr();
-                            std.log.debug(.zorrent_lib, "have={}", .{have});
                             std.debug.assert(have <= self.initial_want_block_count);
                         }
                     } else {
