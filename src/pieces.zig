@@ -53,22 +53,21 @@ pub const Pieces = struct {
 
         var state_file = try utils.openMmapFile(file_name, want_blocks_bitfield_len);
         var want_blocks_bitfield = state_file.data;
+        // Pad with 0
+        {
+            var bit: u8 = 8 - @intCast(u8, initial_want_block_count % 8);
+            while (bit < 8) : (bit += 1) {
+                const k: u3 = @intCast(u3, bit);
+                const mask: u8 = @as(u8, 1) << k;
+                want_blocks_bitfield[want_blocks_bitfield_len - 1] &= mask;
+            }
+        }
         var want_block_count = std.atomic.Int(usize).init(0);
         want_block_count.set(0);
         for (want_blocks_bitfield) |w| {
             _ = want_block_count.fetchAdd(@popCount(u8, w));
         }
         // if (self.want_block_count.get() == 0) try std.mem.set(u8, want_blocks_bitfield, 0xff);
-
-        // Pad with 0
-        // {
-        //     var bit: u8 = 8 - @intCast(u8, initial_want_block_count % 8);
-        //     while (bit < 8) : (bit += 1) {
-        //         const k: u3 = @intCast(u3, bit);
-        //         const mask: u8 = @as(u8, 1) << k;
-        //         want_blocks_bitfield[want_blocks_bitfield_len - 1] &= mask;
-        //     }
-        // }
 
         var pieces_valid = std.ArrayList(u8).init(allocator);
         errdefer pieces_valid.deinit();
@@ -91,6 +90,8 @@ pub const Pieces = struct {
 
         pieces.have_block_count.set(initial_want_block_count - pieces.want_block_count.get());
 
+        std.log.debug(.zorrent_lib, "want_block_count={} want={X}", .{ pieces.want_block_count.get(), pieces.want_blocks_bitfield });
+
         return pieces;
     }
 
@@ -106,7 +107,6 @@ pub const Pieces = struct {
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
-                std.log.debug(.zorrent_lib, "want={X}", .{self.want_blocks_bitfield});
                 defer lock.release();
 
                 for (self.want_blocks_bitfield) |*want, i| {
@@ -117,7 +117,7 @@ pub const Pieces = struct {
 
                     const bit: u3 = @intCast(u3, std.mem.bigToNative(u8, @clz(u8, w & remote)));
                     const block = i * 8 + bit;
-                    std.debug.assert(block < self.initial_want_block_count);
+                    if (block >= self.initial_want_block_count) continue; // Padding bits
 
                     const file_offset = block_len * block;
                     std.debug.assert(file_offset < self.total_len);
@@ -176,7 +176,7 @@ pub const Pieces = struct {
         const total: usize = want + have;
         const percent: f64 = @intToFloat(f64, have) / @intToFloat(f64, total) * 100.0;
 
-        std.log.info(.zorrent_lib, "[Blocks Have/Remaining/Total/Have Size/Total size: {}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.initial_want_block_count * block_len, percent });
+        std.log.info(.zorrent_lib, "[Blocks Have/Remaining/Total/Blocks valid/Have Size/Total size: {}/{}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.valid_block_count.get(), self.initial_want_block_count * block_len, percent });
         return;
     }
 

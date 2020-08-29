@@ -19,7 +19,7 @@ $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019
   * [ ] Support torrent with multiple files
   * [ ] Add timeout to expire acquired file offset
   * [ ] Upload files (serve)
-  * [ ] Save want state to continue downloading a file after a restart
+  * [x] Save want state to continue downloading a file after a restart
   * [ ] Check hashes in parallel
   * [ ] Get peers from trackers in parallel
   * [ ] Pick up new peers while downloading from other peers
