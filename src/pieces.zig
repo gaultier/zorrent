@@ -63,11 +63,6 @@ pub const Pieces = struct {
                 want_blocks_bitfield.items[want_blocks_bitfield_len - 1] &= mask;
             }
         }
-        var want_block_count = std.atomic.Int(usize).init(0);
-        want_block_count.set(0);
-        for (want_blocks_bitfield.items) |w| {
-            _ = want_block_count.fetchAdd(@popCount(u8, w));
-        }
 
         var pieces_valid = std.ArrayList(u8).init(allocator);
         errdefer pieces_valid.deinit();
@@ -78,8 +73,8 @@ pub const Pieces = struct {
             .want_blocks_bitfield = want_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
-            .have_block_count = std.atomic.Int(usize).init(0),
-            .want_block_count = want_block_count,
+            .have_block_count = std.atomic.Int(usize).init(initial_want_block_count),
+            .want_block_count = std.atomic.Int(usize).init(0),
             .initial_want_block_count = initial_want_block_count,
             .total_len = total_len,
             .piece_len = piece_len,
@@ -196,13 +191,15 @@ pub const Pieces = struct {
                 while (piece < pieces_len) : (piece += 1) {
                     const begin: usize = piece * self.piece_len;
                     const expected_len: usize = self.piece_len;
-                    const real_len: usize = std.math.min(file_buffer.len, begin + expected_len) - begin;
+                    const real_len: usize = if (piece == pieces_len - 1) file_buffer.len - begin else self.piece_len;
+                    std.debug.assert(real_len <= self.piece_len);
+
                     const bit: u3 = @intCast(u3, piece % 8);
                     const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
                     if (is_piece_valid) continue;
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes)) {
-                        std.log.warn(.zorrent_lib, "Invalid hash: piece={} [Valid blocks/total={}/{}]", .{ piece, (1 + self.valid_block_count.get()), self.initial_want_block_count });
+                        std.log.warn(.zorrent_lib, "Invalid hash: piece={} [Valid blocks/total={}/{}]", .{ piece, self.valid_block_count.get(), self.initial_want_block_count });
 
                         markFileOffsetsFromPiece(self.want_blocks_bitfield, @intCast(u32, piece), self.piece_len, file_buffer.len);
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
@@ -210,8 +207,9 @@ pub const Pieces = struct {
                         std.debug.assert(want <= self.initial_want_block_count);
 
                         var j: usize = 0;
-                        while (j < blocks_count) {
+                        while (j < blocks_count) : (j += 1) {
                             const have = self.have_block_count.decr();
+                            std.log.debug(.zorrent_lib, "have={}", .{have});
                             std.debug.assert(have <= self.initial_want_block_count);
                         }
                     } else {
@@ -220,7 +218,7 @@ pub const Pieces = struct {
                         std.debug.assert(valid <= self.initial_want_block_count);
 
                         self.pieces_valid[piece / 8] |= @as(u8, 1) << bit;
-                        std.log.info(.zorrent_lib, "Valid hash: piece={} [Valid blocks/total={}/{}]", .{ piece + 1, (1 + self.valid_block_count.get()), self.initial_want_block_count });
+                        std.log.info(.zorrent_lib, "Valid hash: piece={} [Valid blocks/total={}/{}]", .{ piece + 1, self.valid_block_count.get(), self.initial_want_block_count });
                     }
                 }
 

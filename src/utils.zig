@@ -16,6 +16,7 @@ pub fn openMmapFile(path: []const u8, file_len: usize) !MmapFile {
         fd,
         0,
     );
+    std.debug.assert(data.len == file_len);
 
     return MmapFile{ .fd = fd, .data = data };
 }
