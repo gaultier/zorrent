@@ -44,7 +44,6 @@ pub const Pieces = struct {
     want_block_count: std.atomic.Int(usize),
     total_len: usize,
     piece_len: usize,
-    state_file: utils.MmapFile,
     valid_block_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
 
@@ -52,20 +51,21 @@ pub const Pieces = struct {
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
         const want_blocks_bitfield_len = utils.divCeil(usize, initial_want_block_count, 8);
 
-        var state_file = try utils.openMmapFile(file_name, want_blocks_bitfield_len);
-        var want_blocks_bitfield = state_file.data;
+        var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
+        defer want_blocks_bitfield.deinit();
+        try want_blocks_bitfield.appendNTimes(0xff, initial_want_block_count);
         // Pad with 0
         {
             var bit: u8 = 8 - @intCast(u8, initial_want_block_count % 8);
             while (bit < 8) : (bit += 1) {
                 const k: u3 = @intCast(u3, bit);
                 const mask: u8 = @as(u8, 1) << k;
-                want_blocks_bitfield[want_blocks_bitfield_len - 1] &= mask;
+                want_blocks_bitfield.items[want_blocks_bitfield_len - 1] &= mask;
             }
         }
         var want_block_count = std.atomic.Int(usize).init(0);
         want_block_count.set(0);
-        for (want_blocks_bitfield) |w| {
+        for (want_blocks_bitfield.items) |w| {
             _ = want_block_count.fetchAdd(@popCount(u8, w));
         }
 
@@ -75,7 +75,7 @@ pub const Pieces = struct {
         try pieces_valid.appendNTimes(0, utils.divCeil(usize, pieces_count, 8));
 
         var pieces = Pieces{
-            .want_blocks_bitfield = want_blocks_bitfield,
+            .want_blocks_bitfield = want_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
             .have_block_count = std.atomic.Int(usize).init(0),
@@ -84,12 +84,9 @@ pub const Pieces = struct {
             .total_len = total_len,
             .piece_len = piece_len,
             .pieces_valid = pieces_valid.toOwnedSlice(),
-            .state_file = state_file,
             .valid_block_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
         };
-
-        pieces.have_block_count.set(initial_want_block_count - pieces.want_block_count.get());
 
         return pieces;
     }
@@ -97,7 +94,6 @@ pub const Pieces = struct {
     pub fn deinit(self: *Pieces) void {
         self.allocator.free(self.want_blocks_bitfield);
         self.allocator.free(self.pieces_valid);
-        self.state_file.deinit();
     }
 
     pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
@@ -236,7 +232,6 @@ pub const Pieces = struct {
 };
 
 test "init" {
-    std.os.unlink(file_name) catch {};
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -247,13 +242,9 @@ test "init" {
     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
     testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
-
-    std.os.unlink(file_name) catch {};
 }
 
 test "acquireFileOffset" {
-    std.os.unlink(file_name) catch {};
-
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -270,13 +261,9 @@ test "acquireFileOffset" {
     testing.expectEqual(@as(u8, 0b1110_1111), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
-
-    std.os.unlink(file_name) catch {};
 }
 
 test "commitFileOffset" {
-    std.os.unlink(file_name) catch {};
-
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -290,13 +277,9 @@ test "commitFileOffset" {
 
     pieces.commitFileOffset(0);
     testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
-
-    std.os.unlink(file_name) catch {};
 }
 
 test "releaseFileOffset" {
-    std.os.unlink(file_name) catch {};
-
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -312,13 +295,9 @@ test "releaseFileOffset" {
     testing.expectEqual(@as(u8, 0b1111_1111), pieces.want_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
-
-    std.os.unlink(file_name) catch {};
 }
 
 test "isFinished" {
-    std.os.unlink(file_name) catch {};
-
     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     defer pieces.deinit();
 
@@ -335,13 +314,9 @@ test "isFinished" {
     testing.expectEqual(true, pieces.isFinished());
     testing.expectEqual(@as(usize, 0), pieces.want_block_count.get());
     testing.expectEqual(@as(usize, 9), pieces.have_block_count.get());
-
-    std.os.unlink(file_name) catch {};
 }
 
 test "recover state from file" {
-    std.os.unlink(file_name) catch {};
-
     {
         var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
         defer pieces.deinit();
@@ -376,6 +351,4 @@ test "recover state from file" {
         remote_have_blocks_bitfield.items[0] = 0b0000_0001;
         testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
     }
-
-    std.os.unlink(file_name) catch {};
 }
