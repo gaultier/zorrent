@@ -224,7 +224,8 @@ pub const Pieces = struct {
                         // std.debug.assert(valid <= self.initial_want_block_count);
                         // TODO: re-fetch piece
                     } else {
-                        const valid = self.valid_block_count.incr();
+                        const blocks_count = utils.divCeil(usize, real_len, block_len);
+                        const valid = self.valid_block_count.fetchAdd(blocks_count);
                         std.debug.assert(valid <= self.initial_want_block_count);
 
                         self.pieces_valid[piece / 8] |= @as(u8, 1) << bit;
