@@ -245,18 +245,22 @@ pub const Peer = struct {
                 }
             };
             std.debug.assert(self.socket != null);
+            std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
 
             break;
         }
-        std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
     }
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
         try self.retryConnect(pieces);
+        if (pieces.isFinished()) return;
 
         try self.waitForHandshake(torrent_file, pieces);
+        if (pieces.isFinished()) return;
         try self.sendInterested();
+        if (pieces.isFinished()) return;
         try self.sendChoke();
+        if (pieces.isFinished()) return;
 
         const pieces_len: usize = utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
         const blocks_per_piece: usize = utils.divCeil(usize, torrent_file.piece_len, block_len);
