@@ -199,7 +199,8 @@ pub const Pieces = struct {
             const bit: u3 = @intCast(u3, piece % 8);
             const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
             if (is_piece_valid) {
-                _ = self.valid_block_count.incr();
+                const valid = self.valid_block_count.incr();
+                std.debug.assert(valid <= self.initial_want_block_count);
                 continue;
             }
 
@@ -207,7 +208,8 @@ pub const Pieces = struct {
                 std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
 
                 markFileOffsetsFromPiece(self.want_blocks_bitfield, @intCast(u32, piece), pieces_len, file_buffer.len);
-                _ = self.want_block_count.incr();
+                const want = self.want_block_count.incr();
+                std.debug.assert(want <= self.initial_want_block_count);
 
                 // TODO: re-fetch piece
             } else {
