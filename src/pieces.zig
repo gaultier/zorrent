@@ -46,6 +46,7 @@ pub const Pieces = struct {
     piece_len: usize,
     state_file: utils.MmapFile,
     valid_block_count: std.atomic.Int(usize),
+    pieces_valid_mutex: std.Mutex,
 
     pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
@@ -67,7 +68,6 @@ pub const Pieces = struct {
         for (want_blocks_bitfield) |w| {
             _ = want_block_count.fetchAdd(@popCount(u8, w));
         }
-        // if (self.want_block_count.get() == 0) try std.mem.set(u8, want_blocks_bitfield, 0xff);
 
         var pieces_valid = std.ArrayList(u8).init(allocator);
         errdefer pieces_valid.deinit();
@@ -86,6 +86,7 @@ pub const Pieces = struct {
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .state_file = state_file,
             .valid_block_count = std.atomic.Int(usize).init(0),
+            .pieces_valid_mutex = std.Mutex{},
         };
 
         pieces.have_block_count.set(initial_want_block_count - pieces.want_block_count.get());
@@ -176,7 +177,7 @@ pub const Pieces = struct {
         const total: usize = want + have;
         const percent: f64 = @intToFloat(f64, have) / @intToFloat(f64, total) * 100.0;
 
-        std.log.info(.zorrent_lib, "[Blocks Have/Remaining/Total/Blocks valid/Have Size/Total size: {}/{}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.valid_block_count.get(), self.initial_want_block_count * block_len, percent });
+        std.log.info(.zorrent_lib, "[Blocks Have/Want/Total/Blocks valid/Have Size/Total size: {}/{}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.valid_block_count.get(), self.initial_want_block_count * block_len, percent });
         return;
     }
 
@@ -191,34 +192,50 @@ pub const Pieces = struct {
     }
 
     pub fn checkPiecesValid(self: *Pieces, pieces_len: usize, file_buffer: []const u8, hashes: []const u8) bool {
-        // TODO: parallelize
-        var piece: usize = 0;
-        while (piece < pieces_len) : (piece += 1) {
-            const begin: usize = piece * self.piece_len;
-            const expected_len: usize = self.piece_len;
-            const bit: u3 = @intCast(u3, piece % 8);
-            const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
-            if (is_piece_valid) {
-                const valid = self.valid_block_count.incr();
-                std.debug.assert(valid <= self.initial_want_block_count);
-                continue;
-            }
+        var trial: u32 = 0;
+        while (trial < 20) : (trial += 1) {
+            if (self.pieces_valid_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+                // TODO: parallelize
+                var piece: usize = 0;
+                while (piece < pieces_len) : (piece += 1) {
+                    const begin: usize = piece * self.piece_len;
+                    const expected_len: usize = self.piece_len;
+                    const real_len: usize = std.math.min(file_buffer.len, begin + expected_len) - begin;
+                    const bit: u3 = @intCast(u3, piece % 8);
+                    const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
+                    if (is_piece_valid) continue;
 
-            if (!isPieceHashValid(piece, file_buffer[begin..std.math.min(file_buffer.len, begin + expected_len)], hashes)) {
-                std.log.warn(.zorrent_lib, "Invalid piece={}", .{piece});
+                    if (!isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes)) {
+                        std.log.warn(.zorrent_lib, "Invalid piece={} Valid={}/{}", .{ piece, (1 + self.valid_block_count.get()), self.initial_want_block_count });
 
-                markFileOffsetsFromPiece(self.want_blocks_bitfield, @intCast(u32, piece), pieces_len, file_buffer.len);
-                const want = self.want_block_count.incr();
-                std.debug.assert(want <= self.initial_want_block_count);
+                        markFileOffsetsFromPiece(self.want_blocks_bitfield, @intCast(u32, piece), self.piece_len, file_buffer.len);
+                        const blocks_count = utils.divCeil(usize, real_len, block_len);
+                        const want = self.want_block_count.fetchAdd(blocks_count);
+                        std.debug.assert(want <= self.initial_want_block_count);
 
-                // TODO: re-fetch piece
-            } else {
-                self.pieces_valid[piece / 8] |= @as(u8, 1) << bit;
-                std.log.info(.zorrent_lib, "Piece {}/{} valid", .{ piece + 1, pieces_len });
+                        var j: usize = 0;
+                        while (j < blocks_count) {
+                            const have = self.have_block_count.decr();
+                            std.debug.assert(have <= self.initial_want_block_count);
+                        }
+
+                        // const valid = self.valid_block_count.decr();
+                        // std.debug.assert(valid <= self.initial_want_block_count);
+                        // TODO: re-fetch piece
+                    } else {
+                        const valid = self.valid_block_count.incr();
+                        std.debug.assert(valid <= self.initial_want_block_count);
+
+                        self.pieces_valid[piece / 8] |= @as(u8, 1) << bit;
+                        std.log.info(.zorrent_lib, "Piece {}/{} valid Valid={}/{}", .{ piece + 1, pieces_len, (1 + self.valid_block_count.get()), self.initial_want_block_count });
+                    }
+                }
+
+                return self.valid_block_count.get() == self.initial_want_block_count;
             }
         }
-
-        return self.valid_block_count.get() == self.initial_want_block_count;
+        return false;
     }
 };
 
