@@ -91,8 +91,6 @@ pub const Pieces = struct {
 
         pieces.have_block_count.set(initial_want_block_count - pieces.want_block_count.get());
 
-        std.log.debug(.zorrent_lib, "want_block_count={} want={X}", .{ pieces.want_block_count.get(), pieces.want_blocks_bitfield });
-
         return pieces;
     }
 
@@ -140,8 +138,8 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
         std.debug.assert(file_offset < self.total_len);
-        const count = self.have_block_count.incr();
-        std.debug.assert(count <= self.initial_want_block_count);
+        const have = self.have_block_count.incr();
+        std.debug.assert(have <= self.initial_want_block_count);
     }
 
     pub fn downloadedAllBlocks(self: *Pieces) bool {
@@ -163,7 +161,8 @@ pub const Pieces = struct {
                 const bit: u3 = @intCast(u3, i % 8);
                 // Set bit to 1
                 self.want_blocks_bitfield[i] |= std.mem.nativeToBig(u8, @as(u8, 1) << bit);
-                _ = self.want_block_count.incr();
+                const want = self.want_block_count.incr();
+                std.debug.assert(want <= self.initial_want_block_count);
                 return;
             }
         }
@@ -219,10 +218,6 @@ pub const Pieces = struct {
                             const have = self.have_block_count.decr();
                             std.debug.assert(have <= self.initial_want_block_count);
                         }
-
-                        // const valid = self.valid_block_count.decr();
-                        // std.debug.assert(valid <= self.initial_want_block_count);
-                        // TODO: re-fetch piece
                     } else {
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
                         const valid = self.valid_block_count.fetchAdd(blocks_count);

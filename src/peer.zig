@@ -288,6 +288,7 @@ pub const Peer = struct {
 
             const message = try self.parseMessage(pieces);
             if (message) |msg| {
+                pieces.displayStats();
                 std.log.debug(.zorrent_lib, "{}\tMessage: {}", .{ self.address, @tagName(msg) });
 
                 switch (msg) {
