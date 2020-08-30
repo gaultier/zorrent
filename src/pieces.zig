@@ -202,11 +202,9 @@ pub const Pieces = struct {
             const val = self.valid_block_count.incr();
             std.debug.assert(val <= self.initial_want_block_count);
 
-            // Set bit
-            self.pieces_valid[piece_byte] |= (@as(u8, 1) << piece_bit);
+            utils.bitArraySet(self.pieces_valid, piece);
         } else {
-            // Clear bit
-            self.pieces_valid[piece_byte] &= ~(@as(u8, 1) << piece_bit);
+            utils.bitArrayClear(self.pieces_valid, piece);
         }
     }
 
