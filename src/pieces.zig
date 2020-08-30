@@ -8,8 +8,8 @@ const file_name = ".zorrent_state";
 
 pub fn setAllBlocksForPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
     const blocks_in_piece = piece_len / block_len;
-    var block = piece * piece_len / block_len;
-    while (block < blocks_in_piece and block * block_len < total_len) : (block += 1) {
+    var block = piece * blocks_in_piece;
+    while (block * block_len < (piece + 1) * piece_len and block * block_len < total_len) : (block += 1) {
         utils.bitArraySet(bitfield, block);
     }
 }
@@ -208,6 +208,18 @@ pub const Pieces = struct {
         }
     }
 };
+
+test "setAllBlocksForPiece" {
+    var blocks_bitfield = [3]u8{ 0b1010_0000, 0b0000_0001, 0 };
+    const piece_len = 2 * block_len;
+    const total_len = 18 * block_len + 5;
+
+    setAllBlocksForPiece(blocks_bitfield[0..], 3, piece_len, total_len);
+
+    std.testing.expectEqual(@as(u8, 0b1110_0000), blocks_bitfield[0]);
+    std.testing.expectEqual(@as(u8, 0b0000_0001), blocks_bitfield[1]);
+    std.testing.expectEqual(@as(u8, 0), blocks_bitfield[2]);
+}
 
 // test "init" {
 //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
