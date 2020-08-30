@@ -292,7 +292,7 @@ pub const Peer = struct {
                         }
 
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
-                        pieces_mod.markFileOffsetsFromPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
+                        pieces_mod.setAllBlocksForPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
                         std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
                     },
                     Message.Bitfield => |bitfield| {

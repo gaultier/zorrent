@@ -6,17 +6,11 @@ pub const block_len: usize = 1 << 14;
 
 const file_name = ".zorrent_state";
 
-pub fn markFileOffsetsFromPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
-    const size = std.math.min(total_len, (piece + 1) * piece_len);
-
-    var file_offset: usize = piece * piece_len;
-    while (file_offset < size) : (file_offset += block_len) {
-        std.debug.assert(file_offset < total_len);
-        const block: usize = file_offset / block_len;
-        const bit: u3 = @intCast(u3, block % 8);
-
-        std.log.debug(.zorrent_lib, "markFileOffsetsFromPiece: piece={} file_offset={} block={} bit={}", .{ piece, file_offset, block, bit });
-        bitfield[block / 8] |= @as(u8, 1) << bit;
+pub fn setAllBlocksForPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
+    const blocks_in_piece = piece_len / block_len;
+    var block = piece * piece_len / block_len;
+    while (block < blocks_in_piece and block * block_len < total_len) : (block += 1) {
+        utils.bitArraySet(bitfield, block);
     }
 }
 
@@ -30,7 +24,7 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 
         if (has_piece_mask == 0) continue;
 
-        markFileOffsetsFromPiece(remote_have_file_offsets_bitfield, piece, piece_len, total_len);
+        setAllBlocksForPiece(remote_have_file_offsets_bitfield, piece, piece_len, total_len);
     }
 }
 
