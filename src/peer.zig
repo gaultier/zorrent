@@ -260,7 +260,7 @@ pub const Peer = struct {
         var file_offset_opt: ?usize = null;
 
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
-        try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.want_blocks_bitfield.len);
+        try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.have_blocks_bitfield.len);
         defer remote_have_file_offsets_bitfield.deinit();
 
         errdefer if (file_offset_opt) |file_offset| {
