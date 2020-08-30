@@ -88,7 +88,8 @@ pub const Pieces = struct {
 
                 var block = 0;
                 while (block < self.initial_want_block_count) : (block += 1) {
-                    if (!utils.bitArrayIsSet(self.have_blocks_bitfield, block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield, block)) {
+                    if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield[0..], block)) {
+                        utils.bitArrayClear(self.have_blocks_bitfield[0..], block);
                         return block * block_len;
                     }
                 }
@@ -100,10 +101,10 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(file_offset < self.total_len);
-        const have = self.have_block_count.incr();
-        std.debug.assert(have <= self.initial_want_block_count);
+        // const have = self.have_block_count.incr();
+        // std.debug.assert(have <= self.initial_want_block_count);
 
-        self.checkPieceValidForBlock(file_offset, file_buffer, hashes);
+        self.checkPieceValidForBlock(file_offset / block_len, file_buffer, hashes);
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
@@ -113,10 +114,7 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
-                const i: usize = file_offset / block_len / 8;
-                const bit: u3 = @intCast(u3, i % 8);
-                // Set bit to 1
-                self.want_blocks_bitfield[i] |= std.mem.nativeToBig(u8, @as(u8, 1) << bit);
+                utils.bitArraySet(self, have_blocks_bitfield[0..], file_offset / block_len);
                 return;
             }
         }
@@ -148,22 +146,15 @@ pub const Pieces = struct {
         std.debug.assert(begin < self.piece_len);
 
         // Check cache
-        {
-            const bit: u3 = @intCast(u3, piece % 8);
-            const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
-            if (is_piece_valid) return;
-        }
+        if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) return;
 
         // Check if we have all blocks for piece
-        const piece_byte = piece / block_len / 8;
-        const piece_bit: u3 = @intCast(u3, (piece / block_len) % 8);
         const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
         {
-            const blocks_count = utils.divCeil(usize, real_len, block_len);
-            var block = piece_byte;
-            while (block < blocks_count) : (block += 1) {
-                const bit: u3 = @intCast(u3, block % 8);
-                if ((self.have_blocks_bitfield[block] & (@as(u8, 1) << bit)) == 0) return;
+            var block = piece * piece_len / block_len;
+            const blocks = std.math.min(self.initial_want_block_count - block, (self.piece_len / block_len));
+            while (block < blocks) : (block += 1) {
+                if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block)) return;
             }
         }
 
