@@ -49,7 +49,7 @@ pub fn bitArrayClear(array: []u8, index: usize) void {
     array[byte] &= ~mask;
 }
 
-pub fn bitArrayIsSet(array: []u8, index: usize) bool {
+pub fn bitArrayIsSet(array: []const u8, index: usize) bool {
     const byte = index / 8;
     std.debug.assert(byte < array.len);
     const bit: u3 = @intCast(u3, index % 8);
@@ -86,7 +86,7 @@ test "bitArrayClear" {
 }
 
 test "bitArrayIsSet" {
-    var bitArray = [3]u8{ 0b0000_0101, 0b0000_0100, 0b0000_0111 };
+    const bitArray = [3]u8{ 0b0000_0101, 0b0000_0100, 0b0000_0111 };
 
     std.testing.expectEqual(true, bitArrayIsSet(bitArray[0..], 0));
     std.testing.expectEqual(false, bitArrayIsSet(bitArray[0..], 1));

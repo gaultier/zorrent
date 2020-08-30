@@ -81,8 +81,7 @@ pub const Pieces = struct {
     }
 
     pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
-        var trial: u32 = 0;
-        while (trial < 20) : (trial += 1) {
+        while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
@@ -96,7 +95,6 @@ pub const Pieces = struct {
                 return null;
             }
         }
-        return null;
     }
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
