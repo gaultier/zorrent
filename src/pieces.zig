@@ -41,7 +41,6 @@ pub const Pieces = struct {
     piece_acquire_mutex: std.Mutex,
     initial_want_block_count: usize,
     have_block_count: std.atomic.Int(usize),
-    want_block_count: std.atomic.Int(usize),
     total_len: usize,
     piece_len: usize,
     valid_block_count: std.atomic.Int(usize),
@@ -74,7 +73,6 @@ pub const Pieces = struct {
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
             .have_block_count = std.atomic.Int(usize).init(initial_want_block_count),
-            .want_block_count = std.atomic.Int(usize).init(0),
             .initial_want_block_count = initial_want_block_count,
             .total_len = total_len,
             .piece_len = piece_len,
@@ -92,8 +90,6 @@ pub const Pieces = struct {
     }
 
     pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
-        std.debug.assert(!self.isFinished());
-
         var trial: u32 = 0;
         while (trial < 20) : (trial += 1) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
@@ -116,12 +112,10 @@ pub const Pieces = struct {
                     const shift = 7 - bit;
                     want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << shift));
 
-                    _ = self.want_block_count.decr();
-
                     std.log.debug(.zorrent_lib, "acquireFileOffset: overlap={} bit={} i={} file_offset={}", .{ w & remote, bit, i, file_offset });
                     return file_offset;
                 }
-                break;
+                return null;
             }
         }
         return null;
@@ -131,14 +125,6 @@ pub const Pieces = struct {
         std.debug.assert(file_offset < self.total_len);
         const have = self.have_block_count.incr();
         std.debug.assert(have <= self.initial_want_block_count);
-    }
-
-    pub fn downloadedAllBlocks(self: *Pieces) bool {
-        return self.initial_want_block_count == self.have_block_count.get();
-    }
-
-    pub fn isFinished(self: *Pieces) bool {
-        return self.initial_want_block_count == self.valid_block_count.get();
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
@@ -152,22 +138,17 @@ pub const Pieces = struct {
                 const bit: u3 = @intCast(u3, i % 8);
                 // Set bit to 1
                 self.want_blocks_bitfield[i] |= std.mem.nativeToBig(u8, @as(u8, 1) << bit);
-                const want = self.want_block_count.incr();
-                std.debug.assert(want <= self.initial_want_block_count);
                 return;
             }
         }
     }
 
     pub fn displayStats(self: *Pieces) void {
-        const have: usize = self.have_block_count.get();
-        const want: usize = self.want_block_count.get();
-        std.debug.assert(want <= self.initial_want_block_count);
+        const valid = self.valid_block_count.get();
+        const total = self.initial_want_block_count;
+        const percent: f64 = @intToFloat(f64, valid) / @intToFloat(f64, total) * 100.0;
 
-        const total: usize = want + have;
-        const percent: f64 = @intToFloat(f64, have) / @intToFloat(f64, total) * 100.0;
-
-        std.log.info(.zorrent_lib, "[Blocks Have/Want/Total/Blocks valid/Have Size/Total size: {}/{}/{}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ have, want, total, have * block_len, self.valid_block_count.get(), self.initial_want_block_count * block_len, percent });
+        std.log.info(.zorrent_lib, "[Blocks Valid/Total/Have Size/Total size: {}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ valid, total, valid * block_len, self.initial_want_block_count * block_len, percent });
         return;
     }
 
@@ -203,8 +184,6 @@ pub const Pieces = struct {
 
                         markFileOffsetsFromPiece(self.want_blocks_bitfield, @intCast(u32, piece), self.piece_len, file_buffer.len);
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
-                        const want = self.want_block_count.fetchAdd(blocks_count);
-                        std.debug.assert(want <= self.initial_want_block_count);
 
                         var j: usize = 0;
                         while (j < blocks_count) : (j += 1) {

@@ -146,16 +146,13 @@ pub const Peer = struct {
         defer self.recv_buffer.shrinkRetainingCapacity(0);
         try self.recv_buffer.appendSlice(&[_]u8{ 0, 0, 0, 0 });
 
-        while (!pieces.isFinished()) {
-            var read_len = self.socket.?.readAll(self.recv_buffer.items[0..4]) catch |err| {
-                std.log.err(.zorrent_lib, "{}\tRead failed ({})", .{ self.address, err });
-                try self.retryConnect(pieces);
-                continue;
-            };
+        var read_len = self.socket.?.readAll(self.recv_buffer.items[0..4]) catch |err| {
+            std.log.err(.zorrent_lib, "{}\tRead failed ({})", .{ self.address, err });
+            try self.retryConnect(pieces);
+            return null;
+        };
 
-            if (read_len == 0) return null;
-            break;
-        }
+        if (read_len == 0) return null;
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
         if (announced_len == 0) {
@@ -220,7 +217,7 @@ pub const Peer = struct {
         std.log.notice(.zorrent_lib, "{}\tHandshaking", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
-        while (!pieces.isFinished()) {
+        while (true) {
             const len: usize = try self.read(handshake_len);
             if (len >= handshake_len and isHandshake(self.recv_buffer.items[0..handshake_len])) break;
 
@@ -233,7 +230,7 @@ pub const Peer = struct {
 
     fn retryConnect(self: *Peer, pieces: *Pieces) !void {
         std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
-        while (!pieces.isFinished()) {
+        while (true) {
             self.socket = std.net.tcpConnectToAddress(self.address) catch |err| {
                 switch (err) {
                     error.ConnectionTimedOut, error.ConnectionRefused => {
@@ -253,20 +250,14 @@ pub const Peer = struct {
 
     pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []align(std.mem.page_size) u8, pieces: *Pieces) !void {
         try self.retryConnect(pieces);
-        if (pieces.isFinished()) return;
-
         try self.waitForHandshake(torrent_file, pieces);
-        if (pieces.isFinished()) return;
         try self.sendInterested();
-        if (pieces.isFinished()) return;
         try self.sendChoke();
-        if (pieces.isFinished()) return;
 
         const pieces_len: usize = utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
         const blocks_per_piece: usize = utils.divCeil(usize, torrent_file.piece_len, block_len);
         var choked = true;
         var file_offset_opt: ?usize = null;
-        std.log.debug(.zorrent_lib, "stats: total_len={} block_len={} piece_len={}, pieces_count={} blocks_per_piece={} blocks_count={}", .{ torrent_file.total_len, block_len, torrent_file.piece_len, pieces_len, torrent_file.piece_len / block_len, pieces.initial_want_block_count });
 
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
         try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.want_blocks_bitfield.len);
@@ -279,13 +270,12 @@ pub const Peer = struct {
         };
 
         while (true) {
-            if (pieces.downloadedAllBlocks()) {
-                if (pieces.checkPiecesValid(pieces_len, file_buffer, torrent_file.pieces)) {
-                    std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
-                    return;
-                } else continue;
-            }
-
+            // if (pieces.downloadedAllBlocks()) {
+            //     if (pieces.checkPiecesValid(pieces_len, file_buffer, torrent_file.pieces)) {
+            //         std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
+            //         return;
+            //     } else continue;
+            // }
             const message = try self.parseMessage(pieces);
             if (message) |msg| {
                 pieces.displayStats();
@@ -351,7 +341,7 @@ pub const Peer = struct {
                 }
             }
 
-            if (file_offset_opt == null and !choked and !pieces.downloadedAllBlocks()) {
+            if (file_offset_opt == null and !choked) {
                 file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
                     std.time.sleep(100_000_000);
