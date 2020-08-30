@@ -235,10 +235,15 @@ test "markPiecesAsHaveFromBitfield" {
     std.testing.expectEqual(@as(u8, 0), blocks_bitfield[1]);
     std.testing.expectEqual(@as(u8, 0), blocks_bitfield[2]);
 
-    //     setAllBlocksForPiece(blocks_bitfield[0..], 9, piece_len, total_len);
-    //     std.testing.expectEqual(@as(u8, 0b1110_0000), blocks_bitfield[0]);
-    //     std.testing.expectEqual(@as(u8, 0b0000_0001), blocks_bitfield[1]);
-    //     std.testing.expectEqual(@as(u8, 0b0000_0100), blocks_bitfield[2]);
+    markPiecesAsHaveFromBitfield(blocks_bitfield[0..], piece_len, 0b1111_1111, 0, total_len);
+    std.testing.expectEqual(@as(u8, 0b1111_1111), blocks_bitfield[0]);
+    std.testing.expectEqual(@as(u8, 0b1111_1111), blocks_bitfield[1]);
+    std.testing.expectEqual(@as(u8, 0), blocks_bitfield[2]);
+
+    markPiecesAsHaveFromBitfield(blocks_bitfield[0..], piece_len, 0b1111_1111, 1, total_len);
+    std.testing.expectEqual(@as(u8, 0b1111_1111), blocks_bitfield[0]);
+    std.testing.expectEqual(@as(u8, 0b1111_1111), blocks_bitfield[1]);
+    std.testing.expectEqual(@as(u8, 0b0000_0111), blocks_bitfield[2]);
 }
 
 // test "init" {
