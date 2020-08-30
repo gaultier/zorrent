@@ -36,6 +36,7 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 
 pub const Pieces = struct {
     want_blocks_bitfield: []u8,
+    have_blocks_bitfield: []u8,
     pieces_valid: []u8,
     allocator: *std.mem.Allocator,
     piece_acquire_mutex: std.Mutex,
@@ -52,7 +53,7 @@ pub const Pieces = struct {
 
         var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
         defer want_blocks_bitfield.deinit();
-        try want_blocks_bitfield.appendNTimes(0xff, initial_want_block_count);
+        try want_blocks_bitfield.appendNTimes(0xff, want_blocks_bitfield_len);
         // Pad with 0
         {
             var bit: u8 = 8 - @intCast(u8, initial_want_block_count % 8);
@@ -68,8 +69,13 @@ pub const Pieces = struct {
         const pieces_count = utils.divCeil(usize, total_len, piece_len);
         try pieces_valid.appendNTimes(0, utils.divCeil(usize, pieces_count, 8));
 
+        var have_blocks_bitfield = std.ArrayList(u8).init(allocator);
+        defer have_blocks_bitfield.deinit();
+        try have_blocks_bitfield.appendNTimes(0, want_blocks_bitfield_len);
+
         var pieces = Pieces{
             .want_blocks_bitfield = want_blocks_bitfield.toOwnedSlice(),
+            .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
             .have_block_count = std.atomic.Int(usize).init(initial_want_block_count),
@@ -121,10 +127,12 @@ pub const Pieces = struct {
         return null;
     }
 
-    pub fn commitFileOffset(self: *Pieces, file_offset: usize) void {
+    pub fn commitFileOffset(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(file_offset < self.total_len);
         const have = self.have_block_count.incr();
         std.debug.assert(have <= self.initial_want_block_count);
+
+        self.checkPieceValidForBlock(file_offset, file_buffer, hashes);
     }
 
     pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
@@ -160,6 +168,46 @@ pub const Pieces = struct {
 
         std.log.debug(.zorrent_lib, "isPieceHashValid: piece={} actual_hash={X} expected_hash={X} matching_hash={}", .{ piece, actual_hash, expected_hash, identical });
         return identical;
+    }
+
+    fn checkPieceValidForBlock(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
+        std.debug.assert(file_offset < self.total_len);
+        const piece: u32 = @intCast(u32, file_offset / self.piece_len);
+        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, self.piece_len));
+        std.debug.assert(begin < self.piece_len);
+
+        // Check cache
+        {
+            const bit: u3 = @intCast(u3, piece % 8);
+            const is_piece_valid = (self.pieces_valid[piece / 8] & (@as(u8, 1) << bit)) != 0;
+            if (is_piece_valid) return;
+        }
+
+        // Check if we have all blocks for piece
+        const piece_byte = piece / block_len / 8;
+        const piece_bit: u3 = @intCast(u3, (piece / block_len) % 8);
+        const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
+        {
+            const blocks_count = utils.divCeil(usize, real_len, block_len);
+            var block = piece_byte;
+            while (block < blocks_count) : (block += 1) {
+                const bit: u3 = @intCast(u3, block % 8);
+                if ((self.have_blocks_bitfield[block] & (@as(u8, 1) << bit)) == 0) return;
+            }
+        }
+
+        const valid = isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes);
+
+        if (valid) {
+            const val = self.valid_block_count.incr();
+            std.debug.assert(val <= self.initial_want_block_count);
+
+            // Set bit
+            self.pieces_valid[piece_byte] |= (@as(u8, 1) << piece_bit);
+        } else {
+            // Clear bit
+            self.pieces_valid[piece_byte] &= ~(@as(u8, 1) << piece_bit);
+        }
     }
 
     pub fn checkPiecesValid(self: *Pieces, pieces_len: usize, file_buffer: []const u8, hashes: []const u8) bool {
