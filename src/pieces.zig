@@ -215,10 +215,14 @@ test "setAllBlocksForPiece" {
     const total_len = 18 * block_len + 5;
 
     setAllBlocksForPiece(blocks_bitfield[0..], 3, piece_len, total_len);
-
     std.testing.expectEqual(@as(u8, 0b1110_0000), blocks_bitfield[0]);
     std.testing.expectEqual(@as(u8, 0b0000_0001), blocks_bitfield[1]);
     std.testing.expectEqual(@as(u8, 0), blocks_bitfield[2]);
+
+    setAllBlocksForPiece(blocks_bitfield[0..], 9, piece_len, total_len);
+    std.testing.expectEqual(@as(u8, 0b1110_0000), blocks_bitfield[0]);
+    std.testing.expectEqual(@as(u8, 0b0000_0001), blocks_bitfield[1]);
+    std.testing.expectEqual(@as(u8, 0b0000_0100), blocks_bitfield[2]);
 }
 
 // test "init" {
