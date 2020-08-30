@@ -225,6 +225,22 @@ test "setAllBlocksForPiece" {
     std.testing.expectEqual(@as(u8, 0b0000_0100), blocks_bitfield[2]);
 }
 
+test "markPiecesAsHaveFromBitfield" {
+    var blocks_bitfield = [3]u8{ 0, 0, 0 };
+    const piece_len = 2 * block_len;
+    const total_len = 18 * block_len + 5;
+
+    markPiecesAsHaveFromBitfield(blocks_bitfield[0..], piece_len, 0b1000_0000, 0, total_len);
+    std.testing.expectEqual(@as(u8, 0b0000_0011), blocks_bitfield[0]);
+    std.testing.expectEqual(@as(u8, 0), blocks_bitfield[1]);
+    std.testing.expectEqual(@as(u8, 0), blocks_bitfield[2]);
+
+    //     setAllBlocksForPiece(blocks_bitfield[0..], 9, piece_len, total_len);
+    //     std.testing.expectEqual(@as(u8, 0b1110_0000), blocks_bitfield[0]);
+    //     std.testing.expectEqual(@as(u8, 0b0000_0001), blocks_bitfield[1]);
+    //     std.testing.expectEqual(@as(u8, 0b0000_0100), blocks_bitfield[2]);
+}
+
 // test "init" {
 //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
 //     defer pieces.deinit();
