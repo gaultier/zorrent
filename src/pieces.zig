@@ -35,7 +35,6 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 }
 
 pub const Pieces = struct {
-    want_blocks_bitfield: []u8,
     have_blocks_bitfield: []u8,
     pieces_valid: []u8,
     allocator: *std.mem.Allocator,
@@ -49,20 +48,7 @@ pub const Pieces = struct {
 
     pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
         const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
-        const want_blocks_bitfield_len = utils.divCeil(usize, initial_want_block_count, 8);
-
-        var want_blocks_bitfield = std.ArrayList(u8).init(allocator);
-        defer want_blocks_bitfield.deinit();
-        try want_blocks_bitfield.appendNTimes(0xff, want_blocks_bitfield_len);
-        // Pad with 0
-        {
-            var bit: u8 = 8 - @intCast(u8, initial_want_block_count % 8);
-            while (bit < 8) : (bit += 1) {
-                const k: u3 = @intCast(u3, bit);
-                const mask: u8 = @as(u8, 1) << k;
-                want_blocks_bitfield.items[want_blocks_bitfield_len - 1] &= mask;
-            }
-        }
+        const blocks_bitfield_len = utils.divCeil(usize, initial_want_block_count, 8);
 
         var pieces_valid = std.ArrayList(u8).init(allocator);
         errdefer pieces_valid.deinit();
@@ -71,10 +57,9 @@ pub const Pieces = struct {
 
         var have_blocks_bitfield = std.ArrayList(u8).init(allocator);
         defer have_blocks_bitfield.deinit();
-        try have_blocks_bitfield.appendNTimes(0, want_blocks_bitfield_len);
+        try have_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
         var pieces = Pieces{
-            .want_blocks_bitfield = want_blocks_bitfield.toOwnedSlice(),
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
@@ -91,7 +76,7 @@ pub const Pieces = struct {
     }
 
     pub fn deinit(self: *Pieces) void {
-        self.allocator.free(self.want_blocks_bitfield);
+        self.allocator.free(self.have_blocks_bitfield);
         self.allocator.free(self.pieces_valid);
     }
 
@@ -101,25 +86,11 @@ pub const Pieces = struct {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
-                for (self.want_blocks_bitfield) |*want, i| {
-                    const w: u8 = std.mem.nativeToBig(u8, want.*);
-                    if (w == 0) continue;
-                    const remote = remote_have_file_offsets_bitfield[i];
-                    if ((w & remote) == 0) continue;
-
-                    const bit: u3 = @intCast(u3, std.mem.bigToNative(u8, @clz(u8, w & remote)));
-                    const block = i * 8 + bit;
-                    if (block >= self.initial_want_block_count) continue; // Padding bits
-
-                    const file_offset = block_len * block;
-                    std.debug.assert(file_offset < self.total_len);
-
-                    // Clear bit
-                    const shift = 7 - bit;
-                    want.* &= std.mem.nativeToBig(u8, ~(@as(u8, 1) << shift));
-
-                    std.log.debug(.zorrent_lib, "acquireFileOffset: overlap={} bit={} i={} file_offset={}", .{ w & remote, bit, i, file_offset });
-                    return file_offset;
+                var block = 0;
+                while (block < self.initial_want_block_count) : (block += 1) {
+                    if (!utils.bitArrayIsSet(self.have_blocks_bitfield, block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield, block)) {
+                        return block * block_len;
+                    }
                 }
                 return null;
             }
