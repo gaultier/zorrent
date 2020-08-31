@@ -120,11 +120,12 @@ pub const Pieces = struct {
         return identical;
     }
 
-    fn checkPieceValidForBlock(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
-        std.debug.assert(file_offset < self.total_len);
+    fn checkPieceValidForBlock(self: *Pieces, block: usize, file_buffer: []const u8, hashes: []const u8) void {
+        std.debug.assert(block < self.initial_want_block_count);
 
-        std.log.debug(.zorrent_lib, "Checking piece validity for block {}", .{file_offset / block_len});
+        std.log.debug(.zorrent_lib, "Checking piece validity for block {}", .{block});
 
+        const file_offset: usize = block * block_len;
         const piece: u32 = @intCast(u32, file_offset / self.piece_len);
         const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, self.piece_len));
         std.debug.assert(begin < self.piece_len);
@@ -136,9 +137,9 @@ pub const Pieces = struct {
         const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
         {
             const blocks_in_piece = self.piece_len / block_len;
-            var block = piece * blocks_in_piece;
-            while (block * block_len < (piece + 1) * self.piece_len and block * block_len < self.total_len) : (block += 1) {
-                if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block)) return;
+            var block_i = piece * blocks_in_piece;
+            while (block_i * block_len < (piece + 1) * self.piece_len and block_i * block_len < self.total_len) : (block_i += 1) {
+                if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block_i)) return;
             }
         }
 
