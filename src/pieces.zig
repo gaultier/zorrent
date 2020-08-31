@@ -246,18 +246,26 @@ test "markPiecesAsHaveFromBitfield" {
     std.testing.expectEqual(@as(u8, 0b0000_0111), blocks_bitfield[2]);
 }
 
-// test "init" {
-//     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
-//     defer pieces.deinit();
+test "init" {
+    const total_len = 18 * block_len + 5;
+    var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
+    defer pieces.deinit();
 
-//     testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
-//     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
-//     testing.expectEqual(@as(usize, 131_073), pieces.total_len);
+    testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
+    testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[0]);
+    testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[1]);
+    testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[2]);
 
-//     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
-//     testing.expectEqual(@as(usize, 0xff), pieces.want_blocks_bitfield[0]);
-//     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
-// }
+    testing.expectEqual(@as(usize, 2), pieces.pieces_valid.len);
+    testing.expectEqual(@as(usize, 0), pieces.pieces_valid[0]);
+    testing.expectEqual(@as(usize, 0), pieces.pieces_valid[1]);
+
+    testing.expectEqual(@as(usize, total_len), pieces.total_len);
+    testing.expectEqual(@as(usize, 2 * block_len), pieces.piece_len);
+
+    testing.expectEqual(@as(usize, 0), pieces.valid_block_count.get());
+    testing.expectEqual(@as(usize, 19), pieces.have_block_count.get());
+}
 
 // test "acquireFileOffset" {
 //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
