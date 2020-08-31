@@ -332,7 +332,7 @@ pub const Peer = struct {
             if (file_offset_opt == null and !choked) {
                 file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
-                    std.time.sleep(100_000_000);
+                    std.time.sleep(3 * std.time.ns_per_s);
                     continue;
                 }
                 try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
