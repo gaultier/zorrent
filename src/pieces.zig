@@ -130,7 +130,6 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, data: []const u8, hashes: []const u8) !void {
         std.debug.assert(file_offset < self.total_len);
-        std.log.debug("commitFileOffset: file_offset={}", .{file_offset});
 
         while (true) {
             if (self.pieces_valid_mutex.tryAcquire()) |lock| {
@@ -174,8 +173,6 @@ pub const Pieces = struct {
 
     fn checkPieceValidForBlock(self: *Pieces, block: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(block < self.block_count);
-
-        std.log.debug("Checking piece validity for block {}", .{block});
 
         const file_offset: usize = block * block_len;
         const piece: u32 = @intCast(u32, file_offset / self.piece_len);
