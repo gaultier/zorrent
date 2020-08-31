@@ -258,7 +258,6 @@ pub const Peer = struct {
         const pieces_len: usize = utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
         const blocks_per_piece: usize = utils.divCeil(usize, torrent_file.piece_len, block_len);
         var choked = true;
-        var file_offset_opt: ?usize = null;
 
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
         try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.have_blocks_bitfield.len);
@@ -301,30 +300,19 @@ pub const Peer = struct {
                     Message.Piece => |piece| {
                         defer self.allocator.free(piece.data);
 
-                        if (file_offset_opt == null) continue;
-
-                        const file_offset: usize = file_offset_opt.?;
-
-                        const expected_piece: u32 = @intCast(u32, file_offset / torrent_file.piece_len);
-                        const expected_begin: u32 = @intCast(u32, file_offset - @as(usize, expected_piece) * @as(usize, torrent_file.piece_len));
-                        const expected_len: usize = @intCast(u32, std.math.min(block_len, torrent_file.total_len - (expected_piece * torrent_file.piece_len + expected_begin)));
-                        const actual_piece: usize = piece.index;
-                        const actual_begin: usize = piece.begin;
-                        const actual_len: usize = piece.data.len;
-                        const actual_file_offset: usize = piece.index * torrent_file.piece_len + piece.begin;
+                        const received_piece: usize = piece.index;
+                        const received_begin: usize = piece.begin;
+                        const received_len: usize = piece.data.len;
+                        const file_offset: usize = piece.index * torrent_file.piece_len + piece.begin;
 
                         // Malformed piece, skip
-                        if (actual_piece != expected_piece or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
-                            std.log.err("{}\tMalformed block: index={} begin={} expected_piece={} requested_file_offset={}", .{
-                                self.address,   piece.index, piece.begin,
-                                expected_piece, file_offset,
-                            });
+                        if (received_piece >= pieces.pieces_count or received_begin >= pieces.piece_len or received_len > block_len or file_offset >= pieces.total_len) {
+                            std.log.err("{}\tMalformed block: index={} begin={} len={}", .{ self.address, piece.index, piece.begin, piece.data.len });
                             return error.MalformedMessage;
                         }
 
-                        std.log.debug("{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
+                        std.log.debug("{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, received_len, file_buffer.len });
                         try pieces.commitFileOffset(file_offset, piece.data, torrent_file.pieces);
-                        file_offset_opt = null;
 
                         pieces.displayStats();
                     },
@@ -335,18 +323,17 @@ pub const Peer = struct {
             if (pieces.isFinished()) {
                 std.log.info("Finished downloading file", .{});
 
-                file_offset_opt = null;
                 std.time.sleep(1000 * std.time.ns_per_s);
             }
 
-            if (file_offset_opt == null and !choked) {
-                file_offset_opt = pieces.tryAcquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
-                if (file_offset_opt == null) {
+            if (!choked) {
+                if (pieces.tryAcquireFileOffset(remote_have_file_offsets_bitfield.items[0..])) |file_offset| {
+                    try self.requestBlock(file_offset, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
+                } else {
                     std.log.debug("No file offset acquired, sleeping", .{});
                     std.time.sleep(3 * std.time.ns_per_s);
                     continue;
                 }
-                try self.requestBlock(file_offset_opt.?, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
             }
         }
     }
