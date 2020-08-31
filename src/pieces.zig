@@ -93,7 +93,16 @@ pub const Pieces = struct {
         const have = self.have_block_count.incr();
         std.debug.assert(have <= self.initial_want_block_count);
 
-        self.checkPieceValidForBlock(file_offset / block_len, file_buffer, hashes);
+        while (true) {
+            if (self.pieces_valid_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+
+                utils.bitArraySet(self.have_blocks_bitfield, file_offset / block_len);
+
+                self.checkPieceValidForBlock(file_offset / block_len, file_buffer, hashes);
+                return;
+            }
+        }
     }
 
     pub fn displayStats(self: *Pieces) void {
@@ -131,9 +140,9 @@ pub const Pieces = struct {
                 // Check if we have all blocks for piece
                 const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
                 {
-                    var block = piece * self.piece_len / block_len;
-                    const blocks = std.math.min(self.initial_want_block_count - block, (self.piece_len / block_len));
-                    while (block < blocks) : (block += 1) {
+                    const blocks_in_piece = self.piece_len / block_len;
+                    var block = piece * blocks_in_piece;
+                    while (block * block_len < (piece + 1) * self.piece_len and block * block_len < self.total_len) : (block += 1) {
                         if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block)) return;
                     }
                 }
@@ -144,6 +153,8 @@ pub const Pieces = struct {
                     const val = self.valid_block_count.incr();
                     std.debug.assert(val <= self.initial_want_block_count);
                     utils.bitArraySet(self.pieces_valid, piece);
+
+                    // TODO: clear all blocks from piece in 'have_blocks_bitfield'
                 } else {
                     utils.bitArrayClear(self.pieces_valid, piece);
                 }
@@ -285,7 +296,9 @@ test "commitFileOffset" {
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
     testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-    const file_buffer = "9" ** (10 * piece_len);
+    var file_buffer: [10 * piece_len]u8 = undefined;
+    for (file_buffer) |*f| f.* = 9;
+
     const hash = [20]u8{ 0xE9, 0x05, 0x03, 0x5C, 0x75, 0x04, 0xC3, 0xD3, 0xC2, 0x14, 0x87, 0x5B, 0x9C, 0x76, 0x58, 0x22, 0x68, 0x92, 0xF8, 0x2B };
     const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     const hashes: [20 * 10]u8 = hash ++ hash_rest;
@@ -293,6 +306,15 @@ test "commitFileOffset" {
     testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
 
     testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
 }
 
 test "recover state from file" {
@@ -322,12 +344,14 @@ test "recover state from file" {
         const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
         try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-        const file_buffer = "9" ** piece_len;
+        var file_buffer: [10 * piece_len]u8 = undefined;
+        for (file_buffer) |*f| f.* = 9;
+
         const hash = [20]u8{ 0xE9, 0x05, 0x03, 0x5C, 0x75, 0x04, 0xC3, 0xD3, 0xC2, 0x14, 0x87, 0x5B, 0x9C, 0x76, 0x58, 0x22, 0x68, 0x92, 0xF8, 0x2B };
         const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
-        pieces.checkPiecesValid(10, file_buffer[0..], hashes[0..]);
+        pieces.checkPiecesValid(10, file_buffer[0 .. 10 * piece_len], hashes[0..]);
         testing.expectEqual(@as(usize, 1), pieces.valid_block_count.get());
         testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
         // pieces.commitFileOffset(pieces.acquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
