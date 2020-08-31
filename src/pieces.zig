@@ -60,7 +60,7 @@ pub const Pieces = struct {
             break :fs_catch switch (err) {
                 std.fs.File.OpenError.FileNotFound => blk: {
                     file_exists = false;
-                    break :blk try std.fs.cwd().createFile(file_path, .{});
+                    break :blk try std.fs.cwd().createFile(file_path, .{ .read = true });
                 },
                 else => return err, // TODO: Maybe we can recover in some way?
             };
@@ -274,9 +274,9 @@ test "markPiecesAsHaveFromBitfield" {
     std.testing.expectEqual(@as(u8, 0b0000_0111), blocks_bitfield[2]);
 }
 
-test "init" {
+test "init without an existing file" {
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, "", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
@@ -296,7 +296,7 @@ test "init" {
 
 test "tryAcquireFileOffset" {
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, "", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -316,7 +316,7 @@ test "tryAcquireFileOffset" {
 
 test "tryAcquireFileOffset at 100% completion" {
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, "", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     std.mem.set(u8, pieces.have_blocks_bitfield[0..], 0xff);
@@ -334,7 +334,7 @@ test "tryAcquireFileOffset at 100% completion" {
 test "commitFileOffset" {
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    var pieces = try Pieces.init(total_len, piece_len, testing.allocator);
+    var pieces = try Pieces.init(total_len, piece_len, "", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -394,7 +394,15 @@ test "recover state from file" {
     {
         const total_len = 18 * block_len + 5;
         const piece_len = 2 * block_len;
-        var pieces = try Pieces.init(total_len, piece_len, testing.allocator);
+        const hash = [20]u8{ 0xE6, 0x4E, 0xA4, 0x9D, 0xEF, 0x87, 0x53, 0x70, 0x83, 0xFA, 0x06, 0xE0, 0xD9, 0x6F, 0x4F, 0xAD, 0x00, 0x65, 0x0D, 0x11 };
+
+        const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        const hashes: [20 * 10]u8 = hash ++ hash_rest;
+
+        try std.os.unlink("foo");
+        defer std.os.unlink("foo") catch unreachable;
+
+        var pieces = try Pieces.init(total_len, piece_len, "foo", hashes[0..], testing.allocator);
         defer pieces.deinit();
 
         testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
@@ -418,11 +426,6 @@ test "recover state from file" {
 
         var file_buffer: [10 * piece_len]u8 = undefined;
         for (file_buffer) |*f| f.* = 9;
-
-        const hash = [20]u8{ 0xE6, 0x4E, 0xA4, 0x9D, 0xEF, 0x87, 0x53, 0x70, 0x83, 0xFA, 0x06, 0xE0, 0xD9, 0x6F, 0x4F, 0xAD, 0x00, 0x65, 0x0D, 0x11 };
-
-        const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-        const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
         pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
         testing.expectEqual(@as(usize, 2), pieces.valid_block_count.get());
