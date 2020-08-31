@@ -95,7 +95,7 @@ pub const Pieces = struct {
         };
 
         if (file_exists) {
-            _ = pieces.checkPiecesValid(pieces.file_buffer, hashes);
+            _ = try pieces.checkPiecesValid(pieces.file_buffer, hashes);
         }
 
         return pieces;
@@ -213,8 +213,23 @@ pub const Pieces = struct {
         return;
     }
 
-    pub fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) void {
+    fn checkPieceValid(arg: usize) void {}
+
+    pub fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
         const pieces_count: usize = utils.divCeil(usize, self.total_len, self.piece_len);
+
+        const cpus = std.Thread.cpuCount() catch 4;
+        var workers = std.ArrayList(*std.Thread).init(self.allocator);
+        defer workers.deinit();
+
+        for (workers.items) |*w, i| {
+            const work_len = if (i == workers.items.len - 1) self.pieces_count - self.pieces_count / workers.items.len else self.pieces_count / workers.items.len;
+            w.* = try std.Thread.spawn(work_len, checkPieceValid);
+        }
+
+        for (workers.items) |w| {
+            w.wait();
+        }
 
         while (true) {
             if (self.pieces_valid_mutex.tryAcquire()) |lock| {
@@ -469,7 +484,7 @@ test "recover state from file" {
         var file_buffer: [10 * piece_len]u8 = undefined;
         for (file_buffer) |*f| f.* = 9;
 
-        pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
+        try pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
         testing.expectEqual(@as(usize, 2), pieces.valid_block_count.get());
         // pieces.commitFileOffset(pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
     }
