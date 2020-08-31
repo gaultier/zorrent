@@ -130,7 +130,7 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, data: []const u8, hashes: []const u8) !void {
         std.debug.assert(file_offset < self.total_len);
-        std.log.debug("commitFileOffset: file_offset={} data={X}", .{ file_offset, data[0..] });
+        std.log.debug("commitFileOffset: file_offset={}", .{file_offset});
 
         while (true) {
             if (self.pieces_valid_mutex.tryAcquire()) |lock| {

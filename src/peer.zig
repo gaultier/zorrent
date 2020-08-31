@@ -190,8 +190,9 @@ pub const Peer = struct {
             },
             .Piece => blk: {
                 var data = std.ArrayList(u8).init(self.allocator);
-                try data.appendSlice(self.recv_buffer.items[9..announced_len]);
                 defer data.deinit();
+                try data.appendSlice(self.recv_buffer.items[9..announced_len]);
+                std.debug.assert(data.items.len <= block_len);
 
                 break :blk Message{
                     .Piece = MessagePiece{
