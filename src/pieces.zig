@@ -82,7 +82,6 @@ pub const Pieces = struct {
                 var block: usize = 0;
                 while (block < self.initial_want_block_count) : (block += 1) {
                     if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield[0..], block)) {
-                        utils.bitArrayClear(self.have_blocks_bitfield[0..], block);
                         return block * block_len;
                     }
                 }
@@ -267,24 +266,25 @@ test "init" {
     testing.expectEqual(@as(usize, 19), pieces.have_block_count.get());
 }
 
-// test "acquireFileOffset" {
-//     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
-//     defer pieces.deinit();
+test "acquireFileOffset" {
+    const total_len = 18 * block_len + 5;
+    var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
+    defer pieces.deinit();
 
-//     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
-//     defer remote_have_blocks_bitfield.deinit();
-//     const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
-//     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+    var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
+    defer remote_have_blocks_bitfield.deinit();
+    const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
+    try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-//     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-//     remote_have_blocks_bitfield.items[0] = 0b0001_0001;
-//     testing.expectEqual(@as(?usize, 3 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    remote_have_blocks_bitfield.items[0] = 0b0001_0001;
+    testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-//     testing.expectEqual(@as(u8, 0b1110_1111), pieces.want_blocks_bitfield[0]);
-//     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
-//     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
-// }
+    utils.bitArraySet(pieces.have_blocks_bitfield, 0);
+    utils.bitArraySet(pieces.have_blocks_bitfield, 1);
+    testing.expectEqual(@as(?usize, 4 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+}
 
 // test "commitFileOffset" {
 //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
