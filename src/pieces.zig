@@ -136,14 +136,18 @@ pub const Pieces = struct {
             if (self.pieces_valid_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
+                const block = file_offset / block_len;
+                // If another peer has already provided this block
+                if (utils.bitArrayIsSet(self.have_blocks_bitfield, block)) return;
+
                 std.mem.copy(u8, self.file_buffer[file_offset .. file_offset + data.len], data);
                 try self.file.seekTo(file_offset);
                 _ = try self.file.writeAll(data);
                 try self.file.seekTo(0);
 
-                utils.bitArraySet(self.have_blocks_bitfield, file_offset / block_len);
+                utils.bitArraySet(self.have_blocks_bitfield, block);
 
-                self.checkPieceValidForBlock(file_offset / block_len, self.file_buffer, hashes);
+                self.checkPieceValidForBlock(block, self.file_buffer, hashes);
                 return;
             }
         }
