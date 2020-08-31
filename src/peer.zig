@@ -319,7 +319,7 @@ pub const Peer = struct {
                         }
 
                         std.log.debug(.zorrent_lib, "{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
-                        std.mem.copy(u8, file_buffer[file_offset .. file_offset + expected_len], piece.data[0..]);
+                        std.mem.copy(u8, file_buffer[file_offset .. file_offset + expected_len], piece.data);
                         pieces.commitFileOffset(file_offset, file_buffer, torrent_file.pieces);
                         file_offset_opt = null;
 
