@@ -123,41 +123,36 @@ pub const Pieces = struct {
     fn checkPieceValidForBlock(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(file_offset < self.total_len);
 
-        while (true) {
-            if (self.pieces_valid_mutex.tryAcquire()) |lock| {
-                defer lock.release();
-                const piece: u32 = @intCast(u32, file_offset / self.piece_len);
-                const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, self.piece_len));
-                std.debug.assert(begin < self.piece_len);
+        const piece: u32 = @intCast(u32, file_offset / self.piece_len);
+        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, self.piece_len));
+        std.debug.assert(begin < self.piece_len);
 
-                // Check cache
-                if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) return;
+        // Check cache
+        if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) return;
 
-                // Check if we have all blocks for piece
-                const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
-                {
-                    const blocks_in_piece = self.piece_len / block_len;
-                    var block = piece * blocks_in_piece;
-                    while (block * block_len < (piece + 1) * self.piece_len and block * block_len < self.total_len) : (block += 1) {
-                        if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block)) return;
-                    }
-                }
-
-                const valid = isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes);
-
-                if (valid) {
-                    const blocks_count = utils.divCeil(usize, real_len, block_len);
-                    const val = self.valid_block_count.fetchAdd(blocks_count);
-                    std.debug.assert(val <= self.initial_want_block_count);
-
-                    utils.bitArraySet(self.pieces_valid, piece);
-                } else {
-                    utils.bitArrayClear(self.pieces_valid, piece);
-                    // TODO: clear all blocks from piece in 'have_blocks_bitfield'
-                }
-                return;
+        // Check if we have all blocks for piece
+        const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
+        {
+            const blocks_in_piece = self.piece_len / block_len;
+            var block = piece * blocks_in_piece;
+            while (block * block_len < (piece + 1) * self.piece_len and block * block_len < self.total_len) : (block += 1) {
+                if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block)) return;
             }
         }
+
+        const valid = isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes);
+
+        if (valid) {
+            const blocks_count = utils.divCeil(usize, real_len, block_len);
+            const val = self.valid_block_count.fetchAdd(blocks_count);
+            std.debug.assert(val <= self.initial_want_block_count);
+
+            utils.bitArraySet(self.pieces_valid, piece);
+        } else {
+            utils.bitArrayClear(self.pieces_valid, piece);
+            // TODO: clear all blocks from piece in 'have_blocks_bitfield'
+        }
+        return;
     }
 
     pub fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) void {
