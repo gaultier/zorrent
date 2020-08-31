@@ -396,6 +396,10 @@ test "commitFileOffset" {
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], pieces.file_buffer[0..block_len]));
+
+        const disk_data = try pieces.file.readAllAlloc(std.testing.allocator, total_len, total_len);
+        defer std.testing.allocator.free(disk_data);
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], disk_data[0..block_len]));
     }
 
     // We now have the full piece
@@ -417,7 +421,12 @@ test "commitFileOffset" {
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], pieces.file_buffer[0 .. 2 * block_len]));
 
-        testing.expectEqual(true, Pieces.isPieceHashValid(0, data[0..piece_len], hashes[0..]));
+        const disk_data = try pieces.file.readAllAlloc(std.testing.allocator, total_len, total_len);
+        defer std.testing.allocator.free(disk_data);
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], disk_data[0 .. 2 * block_len]));
+
+        testing.expectEqual(true, Pieces.isPieceHashValid(0, disk_data[0..piece_len], hashes[0..]));
+        testing.expectEqual(false, Pieces.isPieceHashValid(1, disk_data[piece_len .. 2 * piece_len], hashes[0..]));
     }
 }
 
