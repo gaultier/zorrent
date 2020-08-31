@@ -70,7 +70,7 @@ pub const Pieces = struct {
         self.allocator.free(self.pieces_valid);
     }
 
-    pub fn acquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
+    pub fn tryAcquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
         while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
@@ -258,7 +258,7 @@ test "init" {
     testing.expectEqual(@as(usize, 0), pieces.valid_block_count.get());
 }
 
-test "acquireFileOffset" {
+test "tryAcquireFileOffset" {
     const total_len = 18 * block_len + 5;
     var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
     defer pieces.deinit();
@@ -268,17 +268,17 @@ test "acquireFileOffset" {
     const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-    testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, null), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     remote_have_blocks_bitfield.items[0] = 0b0001_0001;
-    testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, 0 * block_len), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     utils.bitArraySet(pieces.have_blocks_bitfield, 0);
     utils.bitArraySet(pieces.have_blocks_bitfield, 1);
-    testing.expectEqual(@as(?usize, 4 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, 4 * block_len), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 }
 
-test "acquireFileOffset at 100% completion" {
+test "tryAcquireFileOffset at 100% completion" {
     const total_len = 18 * block_len + 5;
     var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
     defer pieces.deinit();
@@ -292,7 +292,7 @@ test "acquireFileOffset at 100% completion" {
     const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
     try remote_have_blocks_bitfield.appendNTimes(0xff, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-    testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, null), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 }
 
 test "commitFileOffset" {
@@ -307,7 +307,7 @@ test "commitFileOffset" {
     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-    testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    testing.expectEqual(@as(?usize, 0 * block_len), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     var file_buffer: [10 * piece_len]u8 = undefined;
     for (file_buffer) |*f| f.* = 9;
@@ -390,7 +390,7 @@ test "recover state from file" {
 
         pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
         testing.expectEqual(@as(usize, 2), pieces.valid_block_count.get());
-        // pieces.commitFileOffset(pieces.acquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
+        // pieces.commitFileOffset(pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
     }
 
     // {
@@ -407,9 +407,9 @@ test "recover state from file" {
     //     const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
     //     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-    //     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    //     testing.expectEqual(@as(?usize, null), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     //     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-    //     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    //     testing.expectEqual(@as(?usize, null), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
     // }
 }
