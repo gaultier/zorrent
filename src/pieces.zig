@@ -53,11 +53,11 @@ pub const Pieces = struct {
         defer have_blocks_bitfield.deinit();
         try have_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
-        var pieces = Pieces{
+        return Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
-            .have_block_count = std.atomic.Int(usize).init(initial_want_block_count),
+            .have_block_count = std.atomic.Int(usize).init(0),
             .initial_want_block_count = initial_want_block_count,
             .total_len = total_len,
             .piece_len = piece_len,
@@ -65,8 +65,6 @@ pub const Pieces = struct {
             .valid_block_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
         };
-
-        return pieces;
     }
 
     pub fn deinit(self: *Pieces) void {
@@ -92,23 +90,10 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(file_offset < self.total_len);
-        // const have = self.have_block_count.incr();
-        // std.debug.assert(have <= self.initial_want_block_count);
+        const have = self.have_block_count.incr();
+        std.debug.assert(have <= self.initial_want_block_count);
 
         self.checkPieceValidForBlock(file_offset / block_len, file_buffer, hashes);
-    }
-
-    pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
-        std.debug.assert(file_offset < self.total_len);
-
-        while (true) {
-            if (self.piece_acquire_mutex.tryAcquire()) |lock| {
-                defer lock.release();
-
-                utils.bitArraySet(self.have_blocks_bitfield[0..], file_offset / block_len);
-                return;
-            }
-        }
     }
 
     pub fn displayStats(self: *Pieces) void {
@@ -187,11 +172,11 @@ pub const Pieces = struct {
 
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
 
-                        // var j: usize = 0;
-                        // while (j < blocks_count) : (j += 1) {
-                        // const have = self.have_block_count.decr();
-                        // std.debug.assert(have <= self.initial_want_block_count);
-                        // }
+                        var j: usize = 0;
+                        while (j < blocks_count) : (j += 1) {
+                            const have = self.have_block_count.decr();
+                            std.debug.assert(have <= self.initial_want_block_count);
+                        }
                     } else {
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
                         const valid = self.valid_block_count.fetchAdd(blocks_count);
@@ -263,7 +248,7 @@ test "init" {
     testing.expectEqual(@as(usize, 2 * block_len), pieces.piece_len);
 
     testing.expectEqual(@as(usize, 0), pieces.valid_block_count.get());
-    testing.expectEqual(@as(usize, 19), pieces.have_block_count.get());
+    testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
 }
 
 test "acquireFileOffset" {
@@ -288,7 +273,8 @@ test "acquireFileOffset" {
 
 test "commitFileOffset" {
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, testing.allocator);
+    const piece_len = 2 * block_len;
+    var pieces = try Pieces.init(total_len, piece_len, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -299,63 +285,72 @@ test "commitFileOffset" {
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
     testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-    pieces.commitFileOffset(0, file_buffer, hashes); // FIXME
+    const file_buffer = "9" ** (10 * piece_len);
+    const hash = [20]u8{ 0xE9, 0x05, 0x03, 0x5C, 0x75, 0x04, 0xC3, 0xD3, 0xC2, 0x14, 0x87, 0x5B, 0x9C, 0x76, 0x58, 0x22, 0x68, 0x92, 0xF8, 0x2B };
+    const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    const hashes: [20 * 10]u8 = hash ++ hash_rest;
+    pieces.commitFileOffset(0, file_buffer[0..], hashes[0..]);
     testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
 
     testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
 }
 
-// test "releaseFileOffset" {
-//     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
-//     defer pieces.deinit();
+test "recover state from file" {
+    {
+        const total_len = 18 * block_len + 5;
+        const piece_len = 2 * block_len;
+        var pieces = try Pieces.init(total_len, piece_len, testing.allocator);
+        defer pieces.deinit();
 
-//     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
-//     defer remote_have_blocks_bitfield.deinit();
-//     const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
-//     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+        testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
+        testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[0]);
+        testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[1]);
+        testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[2]);
 
-//     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-//     testing.expectEqual(@as(?usize, 7 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+        testing.expectEqual(@as(usize, 2), pieces.pieces_valid.len);
+        testing.expectEqual(@as(usize, 0), pieces.pieces_valid[0]);
+        testing.expectEqual(@as(usize, 0), pieces.pieces_valid[1]);
 
-//     pieces.releaseFileOffset(0);
-//     testing.expectEqual(@as(u8, 0b1111_1111), pieces.want_blocks_bitfield[0]);
-//     testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
-//     testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
-// }
+        testing.expectEqual(@as(usize, total_len), pieces.total_len);
+        testing.expectEqual(@as(usize, 2 * block_len), pieces.piece_len);
 
-// test "recover state from file" {
-//     {
-//         var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
-//         defer pieces.deinit();
-//         testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
-//         testing.expectEqual(@as(usize, 0b1111_1111), pieces.want_blocks_bitfield[0]);
-//         testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
-//         testing.expectEqual(@as(usize, 9), pieces.want_block_count.get());
-//         testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
+        testing.expectEqual(@as(usize, 0), pieces.valid_block_count.get());
+        testing.expectEqual(@as(usize, 0), pieces.have_block_count.get());
 
-//         pieces.want_blocks_bitfield[0] = 0b1111_1110;
-//         pieces.want_block_count.set(8);
-//         pieces.have_block_count.set(1);
-//     }
+        var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
+        defer remote_have_blocks_bitfield.deinit();
+        const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
+        try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-//     {
-//         var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
-//         defer pieces.deinit();
+        const file_buffer = "9" ** piece_len;
+        const hash = [20]u8{ 0xE9, 0x05, 0x03, 0x5C, 0x75, 0x04, 0xC3, 0xD3, 0xC2, 0x14, 0x87, 0x5B, 0x9C, 0x76, 0x58, 0x22, 0x68, 0x92, 0xF8, 0x2B };
+        const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+        const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
-//         testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
-//         testing.expectEqual(@as(usize, 0b1111_1110), pieces.want_blocks_bitfield[0]);
-//         testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
-//         testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
-//         testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
+        pieces.checkPiecesValid(10, file_buffer[0..], hashes[0..]);
+        testing.expectEqual(@as(usize, 1), pieces.valid_block_count.get());
+        testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
+        // pieces.commitFileOffset(pieces.acquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
+    }
 
-//         var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
-//         defer remote_have_blocks_bitfield.deinit();
-//         const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
-//         try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+    // {
+    //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
+    //     defer pieces.deinit();
 
-//         testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    //     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
+    //     testing.expectEqual(@as(usize, 0b1111_1110), pieces.want_blocks_bitfield[0]);
+    //     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
+    //     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
+    //     testing.expectEqual(@as(usize, 1), pieces.have_block_count.get());
 
-//         remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-//         testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
-//     }
-// }
+    //     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
+    //     defer remote_have_blocks_bitfield.deinit();
+    //     const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
+    //     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+
+    //     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+
+    //     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
+    //     testing.expectEqual(@as(?usize, null), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    // }
+}
