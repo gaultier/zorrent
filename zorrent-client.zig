@@ -55,17 +55,12 @@ pub fn main() anyerror!void {
     defer frames.deinit();
     try frames.ensureCapacity(peers.len);
 
-    var download_file = try zorrent.utils.openMmapFile(torrent_file.path, torrent_file.total_len);
-    defer download_file.deinit();
-
-    var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, allocator);
+    var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, torrent_file.path, torrent_file.pieces[0..], allocator);
     const pieces_len: usize = zorrent.utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
-    _ = pieces.checkPiecesValid(download_file.data, torrent_file.pieces);
-
     defer pieces.deinit();
 
     for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, download_file.data, &pieces);
+        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, pieces.file_buffer, &pieces);
     }
 
     for (frames.items) |*frame, i| {

@@ -39,8 +39,10 @@ pub const Pieces = struct {
     blocks_per_piece: usize,
     valid_block_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
+    file_buffer: []u8,
+    file: std.fs.File,
 
-    pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
+    pub fn init(total_len: usize, piece_len: usize, file_path: []const u8, hashes: []const u8, allocator: *std.mem.Allocator) !Pieces {
         const block_count: usize = utils.divCeil(usize, total_len, block_len);
         const blocks_bitfield_len = utils.divCeil(usize, block_count, 8);
 
@@ -53,7 +55,27 @@ pub const Pieces = struct {
         defer have_blocks_bitfield.deinit();
         try have_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
-        return Pieces{
+        var file_exists = true;
+        const file: std.fs.File = std.fs.cwd().openFile(file_path, .{ .write = true }) catch |err| fs_catch: {
+            break :fs_catch switch (err) {
+                std.fs.File.OpenError.FileNotFound => blk: {
+                    file_exists = false;
+                    break :blk try std.fs.cwd().createFile(file_path, .{});
+                },
+                else => return err, // TODO: Maybe we can recover in some way?
+            };
+        };
+
+        var file_buffer: []u8 = if (file_exists) file_buf: {
+            break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
+        } else file_buf: {
+            var file_buffer = std.ArrayList(u8).init(allocator);
+            defer file_buffer.deinit();
+            try file_buffer.ensureCapacity(total_len);
+            break :file_buf file_buffer.toOwnedSlice();
+        };
+
+        var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
@@ -64,12 +86,22 @@ pub const Pieces = struct {
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .valid_block_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
+            .file = file,
+            .file_buffer = file_buffer,
         };
+
+        if (file_exists) {
+            _ = pieces.checkPiecesValid(pieces.file_buffer, hashes);
+        }
+
+        return pieces;
     }
 
     pub fn deinit(self: *Pieces) void {
         self.allocator.free(self.have_blocks_bitfield);
         self.allocator.free(self.pieces_valid);
+        self.allocator.free(self.file_buffer);
+        self.file.close();
     }
 
     pub fn isFinished(self: *Pieces) bool {
