@@ -287,18 +287,43 @@ test "commitFileOffset" {
     const hash = [20]u8{ 0xE6, 0x4E, 0xA4, 0x9D, 0xEF, 0x87, 0x53, 0x70, 0x83, 0xFA, 0x06, 0xE0, 0xD9, 0x6F, 0x4F, 0xAD, 0x00, 0x65, 0x0D, 0x11 };
     const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     const hashes: [20 * 10]u8 = hash ++ hash_rest;
-    pieces.commitFileOffset(0, file_buffer[0..], hashes[0..]);
 
-    testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
-    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+    // We only have one block, not the whole first piece, so no hash check can be done
+    {
+        pieces.commitFileOffset(0 * block_len, file_buffer[0..], hashes[0..]);
+
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
+
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 0));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+    }
+
+    // We now have the full piece
+    {
+        pieces.commitFileOffset(1 * block_len, file_buffer[0..], hashes[0..]);
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
+
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+    }
 }
 
 test "recover state from file" {
