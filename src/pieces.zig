@@ -123,6 +123,8 @@ pub const Pieces = struct {
     fn checkPieceValidForBlock(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(file_offset < self.total_len);
 
+        std.log.debug(.zorrent_lib, "Checking piece validity for block {}", .{file_offset / block_len});
+
         const piece: u32 = @intCast(u32, file_offset / self.piece_len);
         const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, self.piece_len));
         std.debug.assert(begin < self.piece_len);
@@ -143,12 +145,15 @@ pub const Pieces = struct {
         const valid = isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes);
 
         if (valid) {
+            std.log.info(.zorrent_lib, "Piece valid: {}", .{piece});
+
             const blocks_count = utils.divCeil(usize, real_len, block_len);
             const val = self.valid_block_count.fetchAdd(blocks_count);
             std.debug.assert(val <= self.initial_want_block_count);
 
             utils.bitArraySet(self.pieces_valid, piece);
         } else {
+            std.log.warn(.zorrent_lib, "Piece invalid: {}", .{piece});
             utils.bitArrayClear(self.pieces_valid, piece);
             // TODO: clear all blocks from piece in 'have_blocks_bitfield'
         }
