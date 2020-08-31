@@ -329,9 +329,17 @@ pub const Peer = struct {
                 }
             }
 
+            if (pieces.valid_block_count.get() == pieces.initial_want_block_count) {
+                std.log.info(.zorrent_lib, "Finished downloading file", .{});
+
+                file_offset_opt = null;
+                std.time.sleep(1000 * std.time.ns_per_s);
+            }
+
             if (file_offset_opt == null and !choked) {
                 file_offset_opt = pieces.acquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
+                    std.log.debug(.zorrent_lib, "No file offset acquired, sleeping", .{});
                     std.time.sleep(3 * std.time.ns_per_s);
                     continue;
                 }
