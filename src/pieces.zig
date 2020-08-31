@@ -57,13 +57,13 @@ pub const Pieces = struct {
 
         var file_exists = true;
         const file: std.fs.File = std.fs.cwd().openFile(file_path, .{ .write = true }) catch |err| fs_catch: {
-            break :fs_catch switch (err) {
-                std.fs.File.OpenError.FileNotFound => blk: {
+            switch (err) {
+                std.fs.File.OpenError.FileNotFound => {
                     file_exists = false;
-                    break :blk try std.fs.cwd().createFile(file_path, .{ .read = true });
+                    break :fs_catch try std.fs.cwd().createFile(file_path, .{ .read = true });
                 },
                 else => return err, // TODO: Maybe we can recover in some way?
-            };
+            }
         };
 
         var file_buffer: []u8 = if (file_exists) file_buf: {
@@ -275,8 +275,11 @@ test "markPiecesAsHaveFromBitfield" {
 }
 
 test "init without an existing file" {
+    std.os.unlink("foo") catch {};
+    defer std.os.unlink("foo") catch {};
+
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, "", &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
@@ -295,8 +298,11 @@ test "init without an existing file" {
 }
 
 test "tryAcquireFileOffset" {
+    std.os.unlink("foo") catch {};
+    defer std.os.unlink("foo") catch {};
+
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, "", &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -315,8 +321,11 @@ test "tryAcquireFileOffset" {
 }
 
 test "tryAcquireFileOffset at 100% completion" {
+    std.os.unlink("foo") catch {};
+    defer std.os.unlink("foo") catch {};
+
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, "", &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     std.mem.set(u8, pieces.have_blocks_bitfield[0..], 0xff);
@@ -332,9 +341,12 @@ test "tryAcquireFileOffset at 100% completion" {
 }
 
 test "commitFileOffset" {
+    std.os.unlink("foo") catch {};
+    defer std.os.unlink("foo") catch {};
+
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    var pieces = try Pieces.init(total_len, piece_len, "", &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, piece_len, "foo", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -391,6 +403,9 @@ test "commitFileOffset" {
 }
 
 test "recover state from file" {
+    std.os.unlink("foo") catch {};
+    defer std.os.unlink("foo") catch {};
+
     {
         const total_len = 18 * block_len + 5;
         const piece_len = 2 * block_len;
@@ -398,9 +413,6 @@ test "recover state from file" {
 
         const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         const hashes: [20 * 10]u8 = hash ++ hash_rest;
-
-        try std.os.unlink("foo");
-        defer std.os.unlink("foo") catch unreachable;
 
         var pieces = try Pieces.init(total_len, piece_len, "foo", hashes[0..], testing.allocator);
         defer pieces.deinit();
