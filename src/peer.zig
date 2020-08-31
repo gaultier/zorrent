@@ -329,7 +329,7 @@ pub const Peer = struct {
                 }
             }
 
-            if (pieces.valid_block_count.get() == pieces.initial_want_block_count) {
+            if (pieces.isFinished()) {
                 std.log.info(.zorrent_lib, "Finished downloading file", .{});
 
                 file_offset_opt = null;

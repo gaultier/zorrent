@@ -33,7 +33,7 @@ pub const Pieces = struct {
     pieces_valid: []u8,
     allocator: *std.mem.Allocator,
     piece_acquire_mutex: std.Mutex,
-    initial_want_block_count: usize,
+    block_count: usize,
     total_len: usize,
     piece_len: usize,
     blocks_per_piece: usize,
@@ -41,8 +41,8 @@ pub const Pieces = struct {
     pieces_valid_mutex: std.Mutex,
 
     pub fn init(total_len: usize, piece_len: usize, allocator: *std.mem.Allocator) !Pieces {
-        const initial_want_block_count: usize = utils.divCeil(usize, total_len, block_len);
-        const blocks_bitfield_len = utils.divCeil(usize, initial_want_block_count, 8);
+        const block_count: usize = utils.divCeil(usize, total_len, block_len);
+        const blocks_bitfield_len = utils.divCeil(usize, block_count, 8);
 
         var pieces_valid = std.ArrayList(u8).init(allocator);
         errdefer pieces_valid.deinit();
@@ -57,7 +57,7 @@ pub const Pieces = struct {
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
-            .initial_want_block_count = initial_want_block_count,
+            .block_count = block_count,
             .total_len = total_len,
             .piece_len = piece_len,
             .blocks_per_piece = piece_len / block_len,
@@ -72,13 +72,17 @@ pub const Pieces = struct {
         self.allocator.free(self.pieces_valid);
     }
 
+    pub fn isFinished(self: *Pieces) bool {
+        return self.valid_block_count.get() == self.block_count;
+    }
+
     pub fn tryAcquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
         while (true) {
             if (self.piece_acquire_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
                 var block: usize = 0;
-                while (block < self.initial_want_block_count) : (block += 1) {
+                while (block < self.block_count) : (block += 1) {
                     if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield[0..], block)) {
                         return block * block_len;
                     }
@@ -105,10 +109,10 @@ pub const Pieces = struct {
 
     pub fn displayStats(self: *Pieces) void {
         const valid = self.valid_block_count.get();
-        const total = self.initial_want_block_count;
+        const total = self.block_count;
         const percent: f64 = @intToFloat(f64, valid) / @intToFloat(f64, total) * 100.0;
 
-        std.log.info(.zorrent_lib, "[Blocks Valid/Total/Have Size/Total size: {}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ valid, total, valid * block_len, self.initial_want_block_count * block_len, percent });
+        std.log.info(.zorrent_lib, "[Blocks Valid/Total/Have Size/Total size: {}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent });
         return;
     }
 
@@ -123,7 +127,7 @@ pub const Pieces = struct {
     }
 
     fn checkPieceValidForBlock(self: *Pieces, block: usize, file_buffer: []const u8, hashes: []const u8) void {
-        std.debug.assert(block < self.initial_want_block_count);
+        std.debug.assert(block < self.block_count);
 
         std.log.debug(.zorrent_lib, "Checking piece validity for block {}", .{block});
 
@@ -151,7 +155,7 @@ pub const Pieces = struct {
 
             const blocks_count = utils.divCeil(usize, real_len, block_len);
             const val = self.valid_block_count.fetchAdd(blocks_count);
-            std.debug.assert(val <= self.initial_want_block_count);
+            std.debug.assert(val <= self.block_count);
 
             utils.bitArraySet(self.pieces_valid, piece);
         } else {
@@ -184,14 +188,14 @@ pub const Pieces = struct {
                     if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) continue;
 
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes)) {
-                        std.log.warn(.zorrent_lib, "Invalid hash: piece={} [Valid blocks/total={}/{}]", .{ piece, self.valid_block_count.get(), self.initial_want_block_count });
+                        std.log.warn(.zorrent_lib, "Invalid hash: piece={} [Valid blocks/total={}/{}]", .{ piece, self.valid_block_count.get(), self.block_count });
                     } else {
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
                         const valid = self.valid_block_count.fetchAdd(blocks_count);
-                        std.debug.assert(valid <= self.initial_want_block_count);
+                        std.debug.assert(valid <= self.block_count);
 
                         utils.bitArraySet(self.pieces_valid[0..], piece);
-                        std.log.info(.zorrent_lib, "Valid hash: piece={} [Valid blocks/total={}/{}]", .{ piece + 1, self.valid_block_count.get(), self.initial_want_block_count });
+                        std.log.info(.zorrent_lib, "Valid hash: piece={} [Valid blocks/total={}/{}]", .{ piece + 1, self.valid_block_count.get(), self.block_count });
                     }
                 }
 
@@ -397,10 +401,10 @@ test "recover state from file" {
     //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
     //     defer pieces.deinit();
 
-    //     testing.expectEqual(@as(usize, 2), pieces.want_blocks_bitfield.len);
-    //     testing.expectEqual(@as(usize, 0b1111_1110), pieces.want_blocks_bitfield[0]);
-    //     testing.expectEqual(@as(usize, 0b1000_0000), pieces.want_blocks_bitfield[1]);
-    //     testing.expectEqual(@as(usize, 8), pieces.want_block_count.get());
+    //     testing.expectEqual(@as(usize, 2), pieces.blocks_bitfield.len);
+    //     testing.expectEqual(@as(usize, 0b1111_1110), pieces.blocks_bitfield[0]);
+    //     testing.expectEqual(@as(usize, 0b1000_0000), pieces.blocks_bitfield[1]);
+    //     testing.expectEqual(@as(usize, 8), pieces.block_count.get());
 
     //     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
     //     defer remote_have_blocks_bitfield.deinit();
