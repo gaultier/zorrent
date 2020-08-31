@@ -156,7 +156,12 @@ pub const Pieces = struct {
         } else {
             std.log.warn(.zorrent_lib, "Piece invalid: {}", .{piece});
             utils.bitArrayClear(self.pieces_valid, piece);
-            // TODO: clear all blocks from piece in 'have_blocks_bitfield'
+
+            const blocks_in_piece = self.piece_len / block_len;
+            var block_i = piece * blocks_in_piece;
+            while (block_i * block_len < (piece + 1) * self.piece_len and block_i * block_len < self.total_len) : (block_i += 1) {
+                utils.bitArrayClear(self.have_blocks_bitfield[0..], block_i);
+            }
         }
         return;
     }
