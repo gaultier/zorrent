@@ -175,14 +175,14 @@ pub const Pieces = struct {
 
         const file_offset: usize = block * block_len;
         const piece: u32 = @intCast(u32, file_offset / self.piece_len);
-        const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, self.piece_len));
-        std.debug.assert(begin < self.piece_len);
+        const file_offset_piece_begin: usize = piece * self.piece_len;
+        std.debug.assert(file_offset_piece_begin < self.total_len);
 
         // Check cache
         if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) return;
 
         // Check if we have all blocks for piece
-        const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
+        const real_len: usize = std.math.min(self.total_len - file_offset_piece_begin, self.piece_len);
         {
             var block_i = piece * self.blocks_per_piece;
             while (block_i * block_len < (piece + 1) * self.piece_len and block_i * block_len < self.total_len) : (block_i += 1) {
@@ -190,7 +190,7 @@ pub const Pieces = struct {
             }
         }
 
-        const valid = isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes);
+        const valid = isPieceHashValid(piece, file_buffer[file_offset_piece_begin .. file_offset_piece_begin + real_len], hashes);
 
         if (valid) {
             std.log.info("Piece valid: {}", .{piece});
