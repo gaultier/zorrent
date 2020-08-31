@@ -71,7 +71,7 @@ pub const Pieces = struct {
         } else file_buf: {
             var file_buffer = std.ArrayList(u8).init(allocator);
             defer file_buffer.deinit();
-            try file_buffer.ensureCapacity(total_len);
+            try file_buffer.appendNTimes(0, total_len);
             break :file_buf file_buffer.toOwnedSlice();
         };
 
@@ -124,16 +124,21 @@ pub const Pieces = struct {
         }
     }
 
-    pub fn commitFileOffset(self: *Pieces, file_offset: usize, file_buffer: []const u8, hashes: []const u8) void {
+    pub fn commitFileOffset(self: *Pieces, file_offset: usize, data: []const u8, hashes: []const u8) !void {
         std.debug.assert(file_offset < self.total_len);
 
         while (true) {
             if (self.pieces_valid_mutex.tryAcquire()) |lock| {
                 defer lock.release();
 
+                std.mem.copy(u8, self.file_buffer[file_offset .. file_offset + data.len], data);
+                try self.file.seekTo(file_offset);
+                _ = try self.file.writeAll(data);
+                try self.file.seekTo(0);
+
                 utils.bitArraySet(self.have_blocks_bitfield, file_offset / block_len);
 
-                self.checkPieceValidForBlock(file_offset / block_len, file_buffer, hashes);
+                self.checkPieceValidForBlock(file_offset / block_len, self.file_buffer, hashes);
                 return;
             }
         }
@@ -282,6 +287,8 @@ test "init without an existing file" {
     var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
+    testing.expectEqual(@as(usize, total_len), pieces.file_buffer.len);
+
     testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
     testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[0]);
     testing.expectEqual(@as(usize, 0), pieces.have_blocks_bitfield[1]);
@@ -357,8 +364,8 @@ test "commitFileOffset" {
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
     testing.expectEqual(@as(?usize, 0 * block_len), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-    var file_buffer: [10 * piece_len]u8 = undefined;
-    for (file_buffer) |*f| f.* = 9;
+    var data: [piece_len]u8 = undefined;
+    for (data) |*v| v.* = 9;
 
     const hash = [20]u8{ 0xE6, 0x4E, 0xA4, 0x9D, 0xEF, 0x87, 0x53, 0x70, 0x83, 0xFA, 0x06, 0xE0, 0xD9, 0x6F, 0x4F, 0xAD, 0x00, 0x65, 0x0D, 0x11 };
     const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -366,7 +373,7 @@ test "commitFileOffset" {
 
     // We only have one block, not the whole first piece, so no hash check can be done
     {
-        pieces.commitFileOffset(0 * block_len, file_buffer[0..], hashes[0..]);
+        try pieces.commitFileOffset(0 * block_len, data[0..], hashes[0..]);
 
         testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
@@ -385,7 +392,7 @@ test "commitFileOffset" {
 
     // We now have the full piece
     {
-        pieces.commitFileOffset(1 * block_len, file_buffer[0..], hashes[0..]);
+        try pieces.commitFileOffset(1 * block_len, data[0..], hashes[0..]);
         testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
         testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
 
