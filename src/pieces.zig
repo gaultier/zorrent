@@ -36,6 +36,7 @@ pub const Pieces = struct {
     initial_want_block_count: usize,
     total_len: usize,
     piece_len: usize,
+    blocks_per_piece: usize,
     valid_block_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
 
@@ -59,6 +60,7 @@ pub const Pieces = struct {
             .initial_want_block_count = initial_want_block_count,
             .total_len = total_len,
             .piece_len = piece_len,
+            .blocks_per_piece = piece_len / block_len,
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .valid_block_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
@@ -136,8 +138,7 @@ pub const Pieces = struct {
         // Check if we have all blocks for piece
         const real_len: usize = std.math.min(self.total_len - begin, self.piece_len);
         {
-            const blocks_in_piece = self.piece_len / block_len;
-            var block_i = piece * blocks_in_piece;
+            var block_i = piece * self.blocks_per_piece;
             while (block_i * block_len < (piece + 1) * self.piece_len and block_i * block_len < self.total_len) : (block_i += 1) {
                 if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block_i)) return;
             }
@@ -157,8 +158,7 @@ pub const Pieces = struct {
             std.log.warn(.zorrent_lib, "Piece invalid: {}", .{piece});
             utils.bitArrayClear(self.pieces_valid, piece);
 
-            const blocks_in_piece = self.piece_len / block_len;
-            var block_i = piece * blocks_in_piece;
+            var block_i = piece * self.blocks_per_piece;
             while (block_i * block_len < (piece + 1) * self.piece_len and block_i * block_len < self.total_len) : (block_i += 1) {
                 utils.bitArrayClear(self.have_blocks_bitfield[0..], block_i);
             }
