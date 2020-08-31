@@ -81,7 +81,7 @@ pub const TorrentFile = struct {
         try field_info.stringifyValue(field_info_bencoded.writer());
 
         var hash: [20]u8 = undefined;
-        std.crypto.Sha1.hash(field_info_bencoded.items, hash[0..]);
+        std.crypto.hash.Sha1.hash(field_info_bencoded.items, hash[0..], std.crypto.hash.Sha1.Options{});
 
         return TorrentFile{
             .announce_urls = owned_announce_urls.toOwnedSlice(),
@@ -139,7 +139,7 @@ pub const TorrentFile = struct {
         curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlInitFailed;
         }
         defer c.curl_global_cleanup();
@@ -149,7 +149,7 @@ pub const TorrentFile = struct {
 
         curl = c.curl_easy_init() orelse {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlInitFailed;
         };
         defer c.curl_easy_cleanup(curl);
@@ -158,14 +158,14 @@ pub const TorrentFile = struct {
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
@@ -173,7 +173,7 @@ pub const TorrentFile = struct {
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_TIMEOUT, timeout_seconds);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
@@ -181,7 +181,7 @@ pub const TorrentFile = struct {
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_FOLLOWLOCATION, follow_redirect_enabled);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
@@ -189,7 +189,7 @@ pub const TorrentFile = struct {
         curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlSetOptFailed;
         }
 
@@ -197,7 +197,7 @@ pub const TorrentFile = struct {
         curl_res = c.curl_easy_perform(curl);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg(.zorrent_lib, "libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
             return error.CurlPerform;
         }
 
@@ -217,14 +217,14 @@ pub const TorrentFile = struct {
     }
 
     fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
-        std.log.notice(.zorrent_lib, "Tracker {}: trying to contact...", .{url});
+        std.log.notice("Tracker {}: trying to contact...", .{url});
         var tracker_response = try self.queryAnnounceUrl(url, allocator);
-        std.log.notice(.zorrent_lib, "Tracker {} replied successfuly", .{url});
+        std.log.notice("Tracker {} replied successfuly", .{url});
 
         var dict = tracker_response.root.Object;
 
         if (bencode.mapLookup(&dict, "failure reason")) |failure_field| {
-            std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, failure_field.String });
+            std.log.warn("Tracker {}: {}", .{ url, failure_field.String });
             return error.TrackerFailure;
         }
 
@@ -253,7 +253,7 @@ pub const TorrentFile = struct {
                     const peer = try Peer.init(address, allocator);
 
                     if (try addUniquePeer(peers, peer)) {
-                        std.log.notice(.zorrent_lib, "Tracker {}: new peer {} total_peers_count={}", .{ url, address, peers.items.len });
+                        std.log.notice("Tracker {}: new peer {} total_peers_count={}", .{ url, address, peers.items.len });
                     }
 
                     i += 6;
@@ -268,7 +268,7 @@ pub const TorrentFile = struct {
 
                     const peer = try Peer.init(address, allocator);
                     if (try addUniquePeer(peers, peer)) {
-                        std.log.notice(.zorrent_lib, "Tracker {}: new peer {}", .{ url, address });
+                        std.log.notice("Tracker {}: new peer {}", .{ url, address });
                     }
                 }
             },
@@ -286,7 +286,7 @@ pub const TorrentFile = struct {
         // TODO: contact in parallel each tracker, hard with libcurl?
         for (self.announce_urls) |url| {
             self.addPeersFromTracker(url, &peers, allocator) catch |err| {
-                std.log.warn(.zorrent_lib, "Tracker {}: {}", .{ url, err });
+                std.log.warn("Tracker {}: {}", .{ url, err });
                 continue;
             };
         }

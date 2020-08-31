@@ -79,7 +79,7 @@ pub const Peer = struct {
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Interested));
         try self.socket.?.writeAll(msg[0..]);
 
-        std.log.notice(.zorrent_lib, "{}\tInterested", .{self.address});
+        std.log.notice("{}\tInterested", .{self.address});
     }
 
     fn sendChoke(self: *Peer) !void {
@@ -91,7 +91,7 @@ pub const Peer = struct {
         std.mem.writeIntBig(u8, @ptrCast(*[1]u8, &msg[4]), @enumToInt(MessageId.Choke));
         try self.socket.?.writeAll(msg[0..]);
 
-        std.log.notice(.zorrent_lib, "{}\tChoke", .{self.address});
+        std.log.notice("{}\tChoke", .{self.address});
     }
 
     fn sendPeerId(self: *Peer) !void {
@@ -121,7 +121,7 @@ pub const Peer = struct {
         const begin: u32 = @intCast(u32, file_offset - @as(usize, piece) * @as(usize, piece_len));
         std.debug.assert(begin < piece_len);
 
-        std.log.debug(.zorrent_lib, "requestBlock: piece={} file_offset={}", .{ piece, file_offset });
+        std.log.debug("requestBlock: piece={} file_offset={}", .{ piece, file_offset });
         const len = @intCast(u32, std.math.min(block_len, total_len - (piece * piece_len + begin)));
         std.debug.assert(len <= block_len);
         std.debug.assert(begin + len <= piece_len);
@@ -137,7 +137,7 @@ pub const Peer = struct {
         std.mem.writeIntBig(u32, @ptrCast(*[4]u8, &payload[13]), len);
 
         try self.socket.?.writeAll(payload[0..]);
-        std.log.debug(.zorrent_lib, "{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}", .{ self.address, piece, begin, file_offset, piece_len, len });
+        std.log.debug("{}\tRequest piece: index={} begin={} file_offset={} piece_len={} block_len={}", .{ self.address, piece, begin, file_offset, piece_len, len });
     }
 
     fn parseMessage(self: *Peer, pieces: *Pieces) !?Message {
@@ -147,7 +147,7 @@ pub const Peer = struct {
         try self.recv_buffer.appendSlice(&[_]u8{ 0, 0, 0, 0 });
 
         var read_len = self.socket.?.readAll(self.recv_buffer.items[0..4]) catch |err| {
-            std.log.err(.zorrent_lib, "{}\tRead failed ({})", .{ self.address, err });
+            std.log.err("{}\tRead failed ({})", .{ self.address, err });
             try self.retryConnect(pieces);
             return null;
         };
@@ -156,12 +156,12 @@ pub const Peer = struct {
 
         const announced_len = std.mem.readIntSliceBig(u32, self.recv_buffer.items[0..4]);
         if (announced_len == 0) {
-            std.log.notice(.zorrent_lib, "{}\tHeartbeat", .{self.address});
+            std.log.notice("{}\tHeartbeat", .{self.address});
             return null;
         }
 
         if (announced_len > (block_len + 9)) {
-            std.log.err(.zorrent_lib, "{}\tInvalid announced_len: {}", .{ self.address, announced_len });
+            std.log.err("{}\tInvalid announced_len: {}", .{ self.address, announced_len });
             return error.InvalidAnnouncedLength;
         }
 
@@ -214,7 +214,7 @@ pub const Peer = struct {
     fn waitForHandshake(self: *Peer, torrent_file: TorrentFile, pieces: *Pieces) !void {
         std.debug.assert(self.socket != null);
 
-        std.log.notice(.zorrent_lib, "{}\tHandshaking", .{self.address});
+        std.log.notice("{}\tHandshaking", .{self.address});
         try self.sendHandshake(torrent_file.hash_info);
 
         while (true) {
@@ -225,16 +225,16 @@ pub const Peer = struct {
             std.time.sleep(1_000_000_000);
         }
         self.recv_buffer.shrinkRetainingCapacity(0);
-        std.log.notice(.zorrent_lib, "{}\tHandshaked", .{self.address});
+        std.log.notice("{}\tHandshaked", .{self.address});
     }
 
     fn retryConnect(self: *Peer, pieces: *Pieces) !void {
-        std.log.notice(.zorrent_lib, "{}\tConnecting", .{self.address});
+        std.log.notice("{}\tConnecting", .{self.address});
         while (true) {
             self.socket = std.net.tcpConnectToAddress(self.address) catch |err| {
                 switch (err) {
                     error.ConnectionTimedOut, error.ConnectionRefused => {
-                        std.log.err(.zorrent_lib, "{}\tConnection failed ({})", .{ self.address, err });
+                        std.log.err("{}\tConnection failed ({})", .{ self.address, err });
                         std.time.sleep(3 * std.time.ns_per_s);
                         continue;
                     },
@@ -242,7 +242,7 @@ pub const Peer = struct {
                 }
             };
             std.debug.assert(self.socket != null);
-            std.log.notice(.zorrent_lib, "{}\tConnected", .{self.address});
+            std.log.notice("{}\tConnected", .{self.address});
 
             break;
         }
@@ -267,7 +267,7 @@ pub const Peer = struct {
             const message = try self.parseMessage(pieces);
             if (message) |msg| {
                 pieces.displayStats();
-                std.log.debug(.zorrent_lib, "{}\tMessage: {}", .{ self.address, @tagName(msg) });
+                std.log.debug("{}\tMessage: {}", .{ self.address, @tagName(msg) });
 
                 switch (msg) {
                     Message.Unchoke => choked = false,
@@ -275,28 +275,31 @@ pub const Peer = struct {
                     Message.Have => |piece| {
                         const byte_index: u32 = piece / 8;
                         if (byte_index > pieces_len) {
-                            std.log.crit(.zorrent_lib, "{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece, pieces_len });
+                            std.log.crit("{}\tInvalid Have piece index: got {}, expected < {}", .{ self.address, piece, pieces_len });
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
+                        std.log.debug("{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
                         pieces_mod.setAllBlocksForPiece(remote_have_file_offsets_bitfield.items, piece, torrent_file.piece_len, torrent_file.total_len);
-                        std.log.debug(.zorrent_lib, "{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
+                        std.log.debug("{}\tHave: piece={} byte_index={}", .{ self.address, piece, byte_index });
                     },
                     Message.Bitfield => |bitfield| {
+                        defer self.allocator.free(bitfield);
+
                         if (bitfield.len > pieces_len) {
-                            std.log.crit(.zorrent_lib, "{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, pieces_len });
+                            std.log.crit("{}\tInvalid Bitfield length: got {}, expected {}", .{ self.address, bitfield.len, pieces_len });
                             return error.InvalidMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
+                        std.log.debug("{}\tBitfield: len={} have={X}", .{ self.address, bitfield.len, bitfield });
 
                         for (bitfield) |have, i| {
                             pieces_mod.markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield.items, torrent_file.piece_len, have, i, torrent_file.total_len);
                         }
-                        defer self.allocator.free(bitfield);
                     },
                     Message.Piece => |piece| {
+                        defer self.allocator.free(piece.data);
+
                         if (file_offset_opt == null) continue;
 
                         const file_offset: usize = file_offset_opt.?;
@@ -311,14 +314,14 @@ pub const Peer = struct {
 
                         // Malformed piece, skip
                         if (actual_piece != expected_piece or actual_file_offset != file_offset or actual_len != expected_len or actual_begin != expected_begin) {
-                            std.log.err(.zorrent_lib, "{}\tMalformed block: index={} begin={} expected_piece={} requested_file_offset={}", .{
+                            std.log.err("{}\tMalformed block: index={} begin={} expected_piece={} requested_file_offset={}", .{
                                 self.address,   piece.index, piece.begin,
                                 expected_piece, file_offset,
                             });
                             return error.MalformedMessage;
                         }
 
-                        std.log.debug(.zorrent_lib, "{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
+                        std.log.debug("{}\tWriting block to disk: file_offset={} begin={} len={} total_len={}", .{ self.address, file_offset, piece.begin, actual_len, file_buffer.len });
                         try pieces.commitFileOffset(file_offset, piece.data, torrent_file.pieces);
                         file_offset_opt = null;
 
@@ -329,7 +332,7 @@ pub const Peer = struct {
             }
 
             if (pieces.isFinished()) {
-                std.log.info(.zorrent_lib, "Finished downloading file", .{});
+                std.log.info("Finished downloading file", .{});
 
                 file_offset_opt = null;
                 std.time.sleep(1000 * std.time.ns_per_s);
@@ -338,7 +341,7 @@ pub const Peer = struct {
             if (file_offset_opt == null and !choked) {
                 file_offset_opt = pieces.tryAcquireFileOffset(remote_have_file_offsets_bitfield.items[0..]);
                 if (file_offset_opt == null) {
-                    std.log.debug(.zorrent_lib, "No file offset acquired, sleeping", .{});
+                    std.log.debug("No file offset acquired, sleeping", .{});
                     std.time.sleep(3 * std.time.ns_per_s);
                     continue;
                 }

@@ -66,7 +66,7 @@ pub fn main() anyerror!void {
     for (frames.items) |*frame, i| {
         _ = await frame catch |err| {
             const peer = peers[i];
-            std.log.err(.zorrent_client, "{}\t{}", .{ peer.address, err });
+            std.log.err("{}\t{}", .{ peer.address, err });
         };
     }
 }

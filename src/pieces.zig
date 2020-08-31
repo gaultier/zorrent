@@ -130,6 +130,7 @@ pub const Pieces = struct {
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, data: []const u8, hashes: []const u8) !void {
         std.debug.assert(file_offset < self.total_len);
+        std.log.debug("commitFileOffset: file_offset={} data={X}", .{ file_offset, data[0..] });
 
         while (true) {
             if (self.pieces_valid_mutex.tryAcquire()) |lock| {
@@ -153,24 +154,24 @@ pub const Pieces = struct {
         const total = self.block_count;
         const percent: f64 = @intToFloat(f64, valid) / @intToFloat(f64, total) * 100.0;
 
-        std.log.info(.zorrent_lib, "[Blocks Valid/Total/Have Size/Total size: {}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent });
+        std.log.info("[Blocks Valid/Total/Have Size/Total size: {}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent });
         return;
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
         const expected_hash = hashes[piece * 20 .. (piece + 1) * 20];
         var actual_hash: [20]u8 = undefined;
-        std.crypto.Sha1.hash(piece_data[0..], actual_hash[0..]);
+        std.crypto.hash.Sha1.hash(piece_data[0..], actual_hash[0..], std.crypto.hash.Sha1.Options{});
         const identical = std.mem.eql(u8, actual_hash[0..20], expected_hash[0..20]);
 
-        std.log.debug(.zorrent_lib, "isPieceHashValid: piece={} actual_hash={X} expected_hash={X} matching_hash={}", .{ piece, actual_hash, expected_hash, identical });
+        std.log.debug("isPieceHashValid: piece={} actual_hash={X} expected_hash={X} matching_hash={}", .{ piece, actual_hash, expected_hash, identical });
         return identical;
     }
 
     fn checkPieceValidForBlock(self: *Pieces, block: usize, file_buffer: []const u8, hashes: []const u8) void {
         std.debug.assert(block < self.block_count);
 
-        std.log.debug(.zorrent_lib, "Checking piece validity for block {}", .{block});
+        std.log.debug("Checking piece validity for block {}", .{block});
 
         const file_offset: usize = block * block_len;
         const piece: u32 = @intCast(u32, file_offset / self.piece_len);
@@ -192,7 +193,7 @@ pub const Pieces = struct {
         const valid = isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes);
 
         if (valid) {
-            std.log.info(.zorrent_lib, "Piece valid: {}", .{piece});
+            std.log.info("Piece valid: {}", .{piece});
 
             const blocks_count = utils.divCeil(usize, real_len, block_len);
             const val = self.valid_block_count.fetchAdd(blocks_count);
@@ -200,7 +201,7 @@ pub const Pieces = struct {
 
             utils.bitArraySet(self.pieces_valid, piece);
         } else {
-            std.log.warn(.zorrent_lib, "Piece invalid: {}", .{piece});
+            std.log.warn("Piece invalid: {}", .{piece});
             utils.bitArrayClear(self.pieces_valid, piece);
 
             var block_i = piece * self.blocks_per_piece;
@@ -223,7 +224,7 @@ pub const Pieces = struct {
                 while (piece < pieces_count) : (piece += 1) {
                     const begin: usize = piece * self.piece_len;
                     const expected_len: usize = self.piece_len;
-                    const real_len: usize = if (piece == pieces_count - 1) file_buffer.len - begin else self.piece_len;
+                    const real_len: usize = std.math.min(file_buffer.len - begin, self.piece_len);
                     std.debug.assert(real_len <= self.piece_len);
 
                     if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) continue;
@@ -231,14 +232,14 @@ pub const Pieces = struct {
                     const valid = self.valid_block_count.get();
                     const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, self.block_count);
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes)) {
-                        std.log.warn(.zorrent_lib, "Invalid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
+                        std.log.warn("Invalid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
                     } else {
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
                         const val = self.valid_block_count.fetchAdd(blocks_count);
                         std.debug.assert(val <= self.block_count);
 
                         utils.bitArraySet(self.pieces_valid[0..], piece);
-                        std.log.info(.zorrent_lib, "Valid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
+                        std.log.info("Valid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
                     }
                 }
 
