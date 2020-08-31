@@ -37,6 +37,7 @@ pub const Pieces = struct {
     total_len: usize,
     piece_len: usize,
     blocks_per_piece: usize,
+    pieces_count: usize,
     valid_block_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
     file_buffer: []u8,
@@ -65,6 +66,7 @@ pub const Pieces = struct {
                 else => return err, // TODO: Maybe we can recover in some way?
             }
         };
+        try std.os.ftruncate(file.handle, total_len);
 
         var file_buffer: []u8 = if (file_exists) file_buf: {
             break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
@@ -74,6 +76,7 @@ pub const Pieces = struct {
             try file_buffer.appendNTimes(0, total_len);
             break :file_buf file_buffer.toOwnedSlice();
         };
+        std.debug.assert(file_buffer.len == total_len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
@@ -83,6 +86,7 @@ pub const Pieces = struct {
             .total_len = total_len,
             .piece_len = piece_len,
             .blocks_per_piece = piece_len / block_len,
+            .pieces_count = pieces_count,
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .valid_block_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
@@ -224,15 +228,17 @@ pub const Pieces = struct {
 
                     if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) continue;
 
+                    const valid = self.valid_block_count.get();
+                    const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, self.block_count);
                     if (!isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes)) {
-                        std.log.warn(.zorrent_lib, "Invalid hash: piece={} [Valid blocks/total={}/{}]", .{ piece, self.valid_block_count.get(), self.block_count });
+                        std.log.warn(.zorrent_lib, "Invalid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
                     } else {
                         const blocks_count = utils.divCeil(usize, real_len, block_len);
-                        const valid = self.valid_block_count.fetchAdd(blocks_count);
-                        std.debug.assert(valid <= self.block_count);
+                        const val = self.valid_block_count.fetchAdd(blocks_count);
+                        std.debug.assert(val <= self.block_count);
 
                         utils.bitArraySet(self.pieces_valid[0..], piece);
-                        std.log.info(.zorrent_lib, "Valid hash: piece={} [Valid blocks/total={}/{}]", .{ piece + 1, self.valid_block_count.get(), self.block_count });
+                        std.log.info(.zorrent_lib, "Valid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
                     }
                 }
 
@@ -365,9 +371,9 @@ test "commitFileOffset" {
     testing.expectEqual(@as(?usize, 0 * block_len), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
     var data: [piece_len]u8 = undefined;
-    for (data) |*v| v.* = 9;
+    for (data) |*v, i| v.* = @intCast(u8, i % 8);
 
-    const hash = [20]u8{ 0xE6, 0x4E, 0xA4, 0x9D, 0xEF, 0x87, 0x53, 0x70, 0x83, 0xFA, 0x06, 0xE0, 0xD9, 0x6F, 0x4F, 0xAD, 0x00, 0x65, 0x0D, 0x11 };
+    const hash = [20]u8{ 0xF1, 0x20, 0xBA, 0xD5, 0xAA, 0x2F, 0xC4, 0x86, 0x34, 0x9B, 0xEF, 0xED, 0x84, 0x4F, 0x37, 0x4C, 0x57, 0xEB, 0xE7, 0xD8 };
     const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
     const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
@@ -388,6 +394,8 @@ test "commitFileOffset" {
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], pieces.file_buffer[0..block_len]));
     }
 
     // We now have the full piece
@@ -406,6 +414,10 @@ test "commitFileOffset" {
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], pieces.file_buffer[0 .. 2 * block_len]));
+
+        testing.expectEqual(true, Pieces.isPieceHashValid(0, data[0..piece_len], hashes[0..]));
     }
 }
 
