@@ -263,19 +263,7 @@ pub const Peer = struct {
         try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.have_blocks_bitfield.len);
         defer remote_have_file_offsets_bitfield.deinit();
 
-        errdefer if (file_offset_opt) |file_offset| {
-            std.log.debug(.zorrent_lib, "{}\tAn error happened, releasing file_offset={}", .{ self.address, file_offset });
-
-            pieces.releaseFileOffset(file_offset);
-        };
-
         while (true) {
-            // if (pieces.downloadedAllBlocks()) {
-            //     if (pieces.checkPiecesValid(pieces_len, file_buffer, torrent_file.pieces)) {
-            //         std.log.notice(.zorrent_lib, "{}\tFinished", .{self.address});
-            //         return;
-            //     } else continue;
-            // }
             const message = try self.parseMessage(pieces);
             if (message) |msg| {
                 pieces.displayStats();
