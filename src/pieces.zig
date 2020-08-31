@@ -147,8 +147,8 @@ pub const Pieces = struct {
 
                 if (valid) {
                     const blocks_count = utils.divCeil(usize, real_len, block_len);
-                    const valid = self.valid_block_count.fetchAdd(blocks_count);
-                    std.debug.assert(valid <= self.initial_want_block_count);
+                    const val = self.valid_block_count.fetchAdd(blocks_count);
+                    std.debug.assert(val <= self.initial_want_block_count);
 
                     utils.bitArraySet(self.pieces_valid, piece);
                 } else {
@@ -272,39 +272,39 @@ test "acquireFileOffset" {
     testing.expectEqual(@as(?usize, 4 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 }
 
-// test "commitFileOffset" {
-//     const total_len = 18 * block_len + 5;
-//     const piece_len = 2 * block_len;
-//     var pieces = try Pieces.init(total_len, piece_len, testing.allocator);
-//     defer pieces.deinit();
+test "commitFileOffset" {
+    const total_len = 18 * block_len + 5;
+    const piece_len = 2 * block_len;
+    var pieces = try Pieces.init(total_len, piece_len, testing.allocator);
+    defer pieces.deinit();
 
-//     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
-//     defer remote_have_blocks_bitfield.deinit();
-//     const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
-//     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
+    var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
+    defer remote_have_blocks_bitfield.deinit();
+    const initial_remote_have_block_count: usize = utils.divCeil(usize, total_len, block_len);
+    try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
 
-//     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-//     testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
+    remote_have_blocks_bitfield.items[0] = 0b0000_0001;
+    testing.expectEqual(@as(?usize, 0 * block_len), pieces.acquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-//     var file_buffer: [10 * piece_len]u8 = undefined;
-//     for (file_buffer) |*f| f.* = 9;
+    var file_buffer: [10 * piece_len]u8 = undefined;
+    for (file_buffer) |*f| f.* = 9;
 
-//     const hash = [20]u8{ 0xE9, 0x05, 0x03, 0x5C, 0x75, 0x04, 0xC3, 0xD3, 0xC2, 0x14, 0x87, 0x5B, 0x9C, 0x76, 0x58, 0x22, 0x68, 0x92, 0xF8, 0x2B };
-//     const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-//     const hashes: [20 * 10]u8 = hash ++ hash_rest;
-//     pieces.commitFileOffset(0, file_buffer[0..], hashes[0..]);
+    const hash = [20]u8{ 0xE6, 0x4E, 0xA4, 0x9D, 0xEF, 0x87, 0x53, 0x70, 0x83, 0xFA, 0x06, 0xE0, 0xD9, 0x6F, 0x4F, 0xAD, 0x00, 0x65, 0x0D, 0x11 };
+    const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+    const hashes: [20 * 10]u8 = hash ++ hash_rest;
+    pieces.commitFileOffset(0, file_buffer[0..], hashes[0..]);
 
-//     testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
-//     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
-// }
+    testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
+    testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+}
 
 test "recover state from file" {
     {

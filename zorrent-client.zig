@@ -60,7 +60,7 @@ pub fn main() anyerror!void {
 
     var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, allocator);
     const pieces_len: usize = zorrent.utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
-    _ = pieces.checkPiecesValid(pieces_len, download_file.data, torrent_file.pieces);
+    _ = pieces.checkPiecesValid(download_file.data, torrent_file.pieces);
 
     defer pieces.deinit();
 
