@@ -49,19 +49,19 @@ const CheckHashWork = struct {
 
             if (utils.bitArrayIsSet(work.pieces.pieces_valid[0..], piece)) continue;
 
-            const valid = work.pieces.valid_block_count.get();
             if (!Pieces.isPieceHashValid(piece, work.file_buffer[begin .. begin + real_len], work.hashes)) {
+                const valid = work.pieces.valid_block_count.get();
                 const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.block_count);
+
                 std.log.warn("Invalid hash: piece={} [Valid pieces/Total Blocks/Total % {}/{} {}/{} {d:.2}%]", .{ piece, valid / work.pieces.blocks_per_piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
             } else {
                 const blocks_count = utils.divCeil(usize, real_len, block_len);
                 const val = work.pieces.valid_block_count.fetchAdd(blocks_count);
                 std.debug.assert(val <= work.pieces.block_count);
 
-                const percent_valid = @intToFloat(f64, val * 100) / @intToFloat(f64, work.pieces.block_count);
-
                 utils.bitArraySet(work.pieces.pieces_valid[0..], piece);
-                std.log.info("Valid hash: piece={} [Valid pieces/Total Blocks/Total % {}/{} {}/{} {d:.2}%]", .{ piece, val / work.pieces.blocks_per_piece, work.pieces.pieces_count, val, work.pieces.block_count, percent_valid });
+
+                nosuspend work.pieces.displayStats();
             }
         }
     }
@@ -196,8 +196,10 @@ pub const Pieces = struct {
         const total = self.block_count;
         const percent: f64 = @intToFloat(f64, valid) / @intToFloat(f64, total) * 100.0;
 
-        std.log.info("[Blocks Valid/Total/Have Size/Total size: {}/{}/{Bi:.2}/{Bi:.2}] {d:.2}%", .{ valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent });
-        return;
+        const held = std.debug.getStderrMutex().acquire();
+        defer held.release();
+        const stderr = std.io.getStdErr().writer();
+        nosuspend stderr.print("[{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\r", .{ valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
