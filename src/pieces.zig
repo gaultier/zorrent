@@ -69,6 +69,7 @@ const CheckHashWork = struct {
 
 pub const Pieces = struct {
     have_blocks_bitfield: []u8,
+    inflight_blocks_bitfield: []u8,
     pieces_valid: []u8,
     allocator: *std.mem.Allocator,
     piece_acquire_mutex: std.Mutex,
@@ -96,6 +97,10 @@ pub const Pieces = struct {
         defer have_blocks_bitfield.deinit();
         try have_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
+        var inflight_blocks_bitfield = std.ArrayList(u8).init(allocator);
+        defer inflight_blocks_bitfield.deinit();
+        try inflight_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
+
         var file_exists = true;
         const file: std.fs.File = std.fs.cwd().openFile(file_path, .{ .write = true }) catch |err| fs_catch: {
             switch (err) {
@@ -120,6 +125,7 @@ pub const Pieces = struct {
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
+            .inflight_blocks_bitfield = inflight_blocks_bitfield.toOwnedSlice(),
             .allocator = allocator,
             .piece_acquire_mutex = std.Mutex{},
             .block_count = block_count,
@@ -144,6 +150,7 @@ pub const Pieces = struct {
 
     pub fn deinit(self: *Pieces) void {
         self.allocator.free(self.have_blocks_bitfield);
+        self.allocator.free(self.inflight_blocks_bitfield);
         self.allocator.free(self.pieces_valid);
         self.allocator.free(self.file_buffer);
         self.file.close();
@@ -160,11 +167,29 @@ pub const Pieces = struct {
 
                 var block: usize = 0;
                 while (block < self.block_count) : (block += 1) {
-                    if (!utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield[0..], block)) {
+                    const piece = block / self.blocks_per_piece;
+                    if (!utils.bitArrayIsSet(self.inflight_blocks_bitfield, block) and !utils.bitArrayIsSet(self.pieces_valid, piece) and !utils.bitArrayIsSet(self.have_blocks_bitfield[0..], block) and utils.bitArrayIsSet(remote_have_file_offsets_bitfield[0..], block)) {
+                        utils.bitArraySet(self.inflight_blocks_bitfield, block);
                         return block * block_len;
                     }
                 }
                 return null;
+            }
+        }
+    }
+    pub fn releaseFileOffset(self: *Pieces, file_offset: usize) void {
+        std.debug.assert(file_offset < self.total_len);
+
+        std.log.debug("releaseFileOffset: file_offset={}", .{file_offset});
+
+        while (true) {
+            if (self.pieces_valid_mutex.tryAcquire()) |lock| {
+                defer lock.release();
+
+                const block = file_offset / block_len;
+
+                utils.bitArraySet(self.inflight_blocks_bitfield, block);
+                return;
             }
         }
     }
@@ -177,6 +202,9 @@ pub const Pieces = struct {
                 defer lock.release();
 
                 const block = file_offset / block_len;
+
+                utils.bitArraySet(self.inflight_blocks_bitfield, block);
+
                 // If another peer has already provided this block
                 if (utils.bitArrayIsSet(self.have_blocks_bitfield, block)) return;
 
@@ -244,6 +272,11 @@ pub const Pieces = struct {
             std.debug.assert(val <= self.pieces_count);
 
             utils.bitArraySet(self.pieces_valid, piece);
+
+            var block_i = piece * self.blocks_per_piece;
+            while (block_i * block_len < (piece + 1) * self.piece_len and block_i * block_len < self.total_len) : (block_i += 1) {
+                utils.bitArraySet(self.have_blocks_bitfield[0..], block_i);
+            }
         } else {
             std.log.warn("Piece invalid: {}", .{piece});
             utils.bitArrayClear(self.pieces_valid, piece);

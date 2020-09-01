@@ -260,10 +260,18 @@ pub const Peer = struct {
         var choked = true;
         var in_flight: u8 = 0;
         const max_in_flight: u8 = 20;
+        var inflight_offsets: [max_in_flight]usize = undefined;
 
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
         try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.have_blocks_bitfield.len);
         defer remote_have_file_offsets_bitfield.deinit();
+
+        errdefer {
+            var j: usize = 0;
+            while (j < in_flight) : (j += 1) {
+                pieces.releaseFileOffset(inflight_offsets[j]);
+            }
+        }
 
         while (true) {
             const message = try self.parseMessage(pieces);
@@ -331,8 +339,9 @@ pub const Peer = struct {
 
             if (in_flight < max_in_flight and !choked) {
                 if (pieces.tryAcquireFileOffset(remote_have_file_offsets_bitfield.items[0..])) |file_offset| {
-                    try self.requestBlock(file_offset, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
+                    inflight_offsets[in_flight] = file_offset;
                     in_flight += 1;
+                    try self.requestBlock(file_offset, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
                 } else {
                     std.log.debug("No file offset acquired, sleeping", .{});
                     std.time.sleep(3 * std.time.ns_per_s);
