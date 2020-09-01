@@ -50,14 +50,14 @@ const CheckHashWork = struct {
             if (utils.bitArrayIsSet(work.pieces.pieces_valid[0..], piece)) continue;
 
             if (!Pieces.isPieceHashValid(piece, work.file_buffer[begin .. begin + real_len], work.hashes)) {
-                const valid = work.pieces.valid_block_count.get();
-                const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.block_count);
+                const valid = work.pieces.valid_piece_count.get();
+                const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.pieces_count);
 
                 std.log.warn("Invalid hash: piece={} [Valid pieces/Total Blocks/Total % {}/{} {}/{} {d:.2}%]", .{ piece, valid / work.pieces.blocks_per_piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
             } else {
                 const blocks_count = utils.divCeil(usize, real_len, block_len);
-                const val = work.pieces.valid_block_count.fetchAdd(blocks_count);
-                std.debug.assert(val <= work.pieces.block_count);
+                const val = work.pieces.valid_piece_count.incr();
+                std.debug.assert(val <= work.pieces.pieces_count);
 
                 utils.bitArraySet(work.pieces.pieces_valid[0..], piece);
 
@@ -77,7 +77,7 @@ pub const Pieces = struct {
     piece_len: usize,
     blocks_per_piece: usize,
     pieces_count: usize,
-    valid_block_count: std.atomic.Int(usize),
+    valid_piece_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
     file_buffer: []u8,
     file: std.fs.File,
@@ -128,7 +128,7 @@ pub const Pieces = struct {
             .blocks_per_piece = piece_len / block_len,
             .pieces_count = pieces_count,
             .pieces_valid = pieces_valid.toOwnedSlice(),
-            .valid_block_count = std.atomic.Int(usize).init(0),
+            .valid_piece_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
             .file = file,
             .file_buffer = file_buffer,
@@ -150,7 +150,7 @@ pub const Pieces = struct {
     }
 
     pub fn isFinished(self: *Pieces) bool {
-        return self.valid_block_count.get() == self.block_count;
+        return self.valid_piece_count.get() == self.pieces_count;
     }
 
     pub fn tryAcquireFileOffset(self: *Pieces, remote_have_file_offsets_bitfield: []const u8) ?usize {
@@ -194,8 +194,8 @@ pub const Pieces = struct {
     }
 
     pub fn displayStats(self: *Pieces) void {
-        const valid = self.valid_block_count.get();
-        const total = self.block_count;
+        const valid = self.valid_piece_count.get();
+        const total = self.pieces_count;
         const percent: f64 = @intToFloat(f64, valid) / @intToFloat(f64, total) * 100.0;
 
         const held = std.debug.getStderrMutex().acquire();
@@ -240,8 +240,8 @@ pub const Pieces = struct {
             std.log.info("Piece valid: {}", .{piece});
 
             const blocks_count = utils.divCeil(usize, real_len, block_len);
-            const val = self.valid_block_count.fetchAdd(blocks_count);
-            std.debug.assert(val <= self.block_count);
+            const val = self.valid_piece_count.incr();
+            std.debug.assert(val <= self.pieces_count);
 
             utils.bitArraySet(self.pieces_valid, piece);
         } else {
@@ -349,7 +349,7 @@ test "init without an existing file" {
     testing.expectEqual(@as(usize, total_len), pieces.total_len);
     testing.expectEqual(@as(usize, 2 * block_len), pieces.piece_len);
 
-    testing.expectEqual(@as(usize, 0), pieces.valid_block_count.get());
+    testing.expectEqual(@as(usize, 0), pieces.valid_piece_count.get());
 }
 
 test "tryAcquireFileOffset" {
@@ -385,7 +385,7 @@ test "tryAcquireFileOffset at 100% completion" {
 
     std.mem.set(u8, pieces.have_blocks_bitfield[0..], 0xff);
     std.mem.set(u8, pieces.pieces_valid[0..], 0xff);
-    pieces.valid_block_count.set(10);
+    pieces.valid_piece_count.set(5);
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
     defer remote_have_blocks_bitfield.deinit();
@@ -499,7 +499,7 @@ test "recover state from file" {
         testing.expectEqual(@as(usize, total_len), pieces.total_len);
         testing.expectEqual(@as(usize, 2 * block_len), pieces.piece_len);
 
-        testing.expectEqual(@as(usize, 0), pieces.valid_block_count.get());
+        testing.expectEqual(@as(usize, 0), pieces.valid_piece_count.get());
 
         var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
         defer remote_have_blocks_bitfield.deinit();
@@ -510,7 +510,7 @@ test "recover state from file" {
         for (file_buffer) |*f| f.* = 9;
 
         try pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
-        testing.expectEqual(@as(usize, 2), pieces.valid_block_count.get());
+        testing.expectEqual(@as(usize, 1), pieces.valid_piece_count.get());
         // pieces.commitFileOffset(pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
     }
 
