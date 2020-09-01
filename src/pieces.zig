@@ -290,6 +290,9 @@ pub const Pieces = struct {
     }
 
     fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
+        // Print one newline to avoid erasing the command line invocation
+        std.io.getStdErr().writeAll("\n") catch {};
+
         const cpus = std.Thread.cpuCount() catch 4;
 
         var work = std.ArrayList(CheckHashWork).init(self.allocator);
