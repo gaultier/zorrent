@@ -201,7 +201,7 @@ pub const Pieces = struct {
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.io.getStdErr().writer();
-        nosuspend stderr.print("{}\t[{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\r", .{ self.file_path, valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
+        nosuspend stderr.print("{} [{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\r", .{ self.file_path, valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
