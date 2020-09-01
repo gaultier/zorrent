@@ -133,7 +133,7 @@ pub const TorrentFile = struct {
 
     fn queryAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
         var queryUrl = try self.buildAnnounceUrl(url, allocator);
-        defer allocator.destroy(&queryUrl);
+        defer allocator.free(queryUrl);
 
         var curl_res: c.CURLcode = undefined;
         curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
