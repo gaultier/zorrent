@@ -49,7 +49,7 @@ pub fn main() anyerror!void {
 
         std.time.sleep(3 * std.time.ns_per_s);
     }
-    defer allocator.free(&peers);
+    defer allocator.free(peers);
 
     var frames = std.ArrayList(@Frame(zorrent.Peer.handle)).init(allocator);
     defer frames.deinit();
