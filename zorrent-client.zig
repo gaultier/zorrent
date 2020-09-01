@@ -31,8 +31,8 @@ pub fn log(
 }
 
 pub fn main() anyerror!void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    const allocator = &arena.allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = &gpa.allocator;
 
     var args = try std.process.argsAlloc(allocator);
     const arg = if (args.len == 2) args[1] else {

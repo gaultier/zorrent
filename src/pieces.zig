@@ -61,7 +61,7 @@ const CheckHashWork = struct {
 
                 utils.bitArraySet(work.pieces.pieces_valid[0..], piece);
 
-                nosuspend work.pieces.displayStats();
+                work.pieces.displayStats();
             }
         }
     }
@@ -201,7 +201,7 @@ pub const Pieces = struct {
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.io.getStdErr().writer();
-        nosuspend stderr.print("{} [{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\r", .{ self.file_path, valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
+        nosuspend stderr.print("\x1b[1A\x1b[2K{} [{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\n", .{ self.file_path, valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
