@@ -30,8 +30,37 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 
 const CheckHashWork = struct {
     pieces: *Pieces,
-    work: []const u8,
+    file_buffer: []const u8,
     hashes: []const u8,
+    piece_start: usize,
+    pieces_count: usize,
+
+    pub fn checkPieceValid(work: *CheckHashWork) void {
+        var piece: usize = work.piece_start;
+        const piece_end = std.math.min((1 + piece) * work.pieces_count, work.pieces.pieces_count);
+
+        while (piece < piece_end) : (piece += 1) {
+            const begin: usize = piece * work.pieces.piece_len;
+            const expected_len: usize = work.pieces.piece_len;
+            const real_len: usize = std.math.min(work.file_buffer.len - begin, work.pieces.piece_len);
+            std.debug.assert(real_len <= work.pieces.piece_len);
+
+            if (utils.bitArrayIsSet(work.pieces.pieces_valid[0..], piece)) continue;
+
+            const valid = work.pieces.valid_block_count.get();
+            const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.block_count);
+            if (!Pieces.isPieceHashValid(piece, work.file_buffer[begin .. begin + real_len], work.hashes)) {
+                std.log.warn("Invalid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
+            } else {
+                const blocks_count = utils.divCeil(usize, real_len, block_len);
+                const val = work.pieces.valid_block_count.fetchAdd(blocks_count);
+                std.debug.assert(val <= work.pieces.block_count);
+
+                utils.bitArraySet(work.pieces.pieces_valid[0..], piece);
+                std.log.info("Valid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
+            }
+        }
+    }
 };
 
 pub const Pieces = struct {
@@ -219,54 +248,36 @@ pub const Pieces = struct {
         return;
     }
 
-    fn checkPieceValid(work: CheckHashWork) void {}
-
     pub fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
-        const pieces_count: usize = utils.divCeil(usize, self.total_len, self.piece_len);
-
         const cpus = std.Thread.cpuCount() catch 4;
+
+        var work = std.ArrayList(CheckHashWork).init(self.allocator);
+        try work.ensureCapacity(cpus);
+        defer work.deinit();
+
         var workers = std.ArrayList(*std.Thread).init(self.allocator);
+        try workers.ensureCapacity(cpus);
         defer workers.deinit();
 
-        for (workers.items) |*w, i| {
-            const work_len = if (i == workers.items.len - 1) self.pieces_count - self.pieces_count / workers.items.len else self.pieces_count / workers.items.len;
-            w.* = try std.Thread.spawn(work_len, checkPieceValid);
+        {
+            var w: usize = 0;
+            while (w < cpus) : (w += 1) {
+                const pieces_count = self.pieces_count / workers.items.len;
+                const piece_begin = w * pieces_count;
+
+                work.addOneAssumeCapacity().* = CheckHashWork{
+                    .pieces = self,
+                    .file_buffer = file_buffer,
+                    .hashes = hashes,
+                    .piece_start = piece_begin,
+                    .pieces_count = pieces_count,
+                };
+                workers.addOneAssumeCapacity().* = try std.Thread.spawn(&work.items[w], CheckHashWork.checkPieceValid);
+            }
         }
 
         for (workers.items) |w| {
             w.wait();
-        }
-
-        while (true) {
-            if (self.pieces_valid_mutex.tryAcquire()) |lock| {
-                defer lock.release();
-                // TODO: parallelize
-
-                var piece: usize = 0;
-                while (piece < pieces_count) : (piece += 1) {
-                    const begin: usize = piece * self.piece_len;
-                    const expected_len: usize = self.piece_len;
-                    const real_len: usize = std.math.min(file_buffer.len - begin, self.piece_len);
-                    std.debug.assert(real_len <= self.piece_len);
-
-                    if (utils.bitArrayIsSet(self.pieces_valid[0..], piece)) continue;
-
-                    const valid = self.valid_block_count.get();
-                    const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, self.block_count);
-                    if (!isPieceHashValid(piece, file_buffer[begin .. begin + real_len], hashes)) {
-                        std.log.warn("Invalid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
-                    } else {
-                        const blocks_count = utils.divCeil(usize, real_len, block_len);
-                        const val = self.valid_block_count.fetchAdd(blocks_count);
-                        std.debug.assert(val <= self.block_count);
-
-                        utils.bitArraySet(self.pieces_valid[0..], piece);
-                        std.log.info("Valid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, self.pieces_count, valid, self.block_count, percent_valid });
-                    }
-                }
-
-                return;
-            }
         }
     }
 };
