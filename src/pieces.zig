@@ -37,7 +37,9 @@ const CheckHashWork = struct {
 
     pub fn checkPieceValid(work: *CheckHashWork) void {
         var piece: usize = work.piece_start;
-        const piece_end = std.math.min((1 + piece) * work.pieces_count, work.pieces.pieces_count);
+        const piece_end = std.math.min(piece + work.pieces_count, work.pieces.pieces_count);
+
+        std.log.debug("Worker #{}: piece_start={} pieces_count={} piece_end={}", .{ work.piece_start / work.pieces_count, work.piece_start, work.pieces_count, piece_end });
 
         while (piece < piece_end) : (piece += 1) {
             const begin: usize = piece * work.pieces.piece_len;
@@ -262,7 +264,7 @@ pub const Pieces = struct {
         {
             var w: usize = 0;
             while (w < cpus) : (w += 1) {
-                const pieces_count = self.pieces_count / workers.items.len;
+                const pieces_count = self.pieces_count / cpus;
                 const piece_begin = w * pieces_count;
 
                 work.addOneAssumeCapacity().* = CheckHashWork{
