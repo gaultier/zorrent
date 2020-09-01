@@ -203,7 +203,7 @@ pub const Pieces = struct {
 
                 const block = file_offset / block_len;
 
-                utils.bitArraySet(self.inflight_blocks_bitfield, block);
+                utils.bitArrayClear(self.inflight_blocks_bitfield, block);
 
                 // If another peer has already provided this block
                 if (utils.bitArrayIsSet(self.have_blocks_bitfield, block)) return;
