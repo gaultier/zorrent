@@ -35,7 +35,7 @@ const CheckHashWork = struct {
     piece_start: usize,
     pieces_count: usize,
 
-    pub fn checkPieceValid(work: *CheckHashWork) void {
+    fn checkPieceValid(work: *CheckHashWork) void {
         var piece: usize = work.piece_start;
         const piece_end = std.math.min(piece + work.pieces_count, work.pieces.pieces_count);
 
@@ -256,7 +256,7 @@ pub const Pieces = struct {
         return;
     }
 
-    pub fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
+    fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
         const cpus = std.Thread.cpuCount() catch 4;
 
         var work = std.ArrayList(CheckHashWork).init(self.allocator);
@@ -511,26 +511,5 @@ test "recover state from file" {
 
         try pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
         testing.expectEqual(@as(usize, 1), pieces.valid_piece_count.get());
-        // pieces.commitFileOffset(pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items).?, file_buffer[0..], hashes[0..]);
     }
-
-    // {
-    //     var pieces = try Pieces.init(131_073, 16 * block_len, testing.allocator);
-    //     defer pieces.deinit();
-
-    //     testing.expectEqual(@as(usize, 2), pieces.blocks_bitfield.len);
-    //     testing.expectEqual(@as(usize, 0b1111_1110), pieces.blocks_bitfield[0]);
-    //     testing.expectEqual(@as(usize, 0b1000_0000), pieces.blocks_bitfield[1]);
-    //     testing.expectEqual(@as(usize, 8), pieces.block_count.get());
-
-    //     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
-    //     defer remote_have_blocks_bitfield.deinit();
-    //     const initial_remote_have_block_count: usize = utils.divCeil(usize, 131_073, block_len);
-    //     try remote_have_blocks_bitfield.appendNTimes(0, utils.divCeil(usize, initial_remote_have_block_count, 8));
-
-    //     testing.expectEqual(@as(?usize, null), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
-
-    //     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
-    //     testing.expectEqual(@as(?usize, null), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
-    // }
 }
