@@ -28,6 +28,12 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
     }
 }
 
+const CheckHashWork = struct {
+    pieces: *Pieces,
+    work: []const u8,
+    hashes: []const u8,
+};
+
 pub const Pieces = struct {
     have_blocks_bitfield: []u8,
     pieces_valid: []u8,
@@ -213,7 +219,7 @@ pub const Pieces = struct {
         return;
     }
 
-    fn checkPieceValid(arg: usize) void {}
+    fn checkPieceValid(work: CheckHashWork) void {}
 
     pub fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
         const pieces_count: usize = utils.divCeil(usize, self.total_len, self.piece_len);
