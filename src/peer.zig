@@ -258,6 +258,8 @@ pub const Peer = struct {
         const pieces_len: usize = utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
         const blocks_per_piece: usize = utils.divCeil(usize, torrent_file.piece_len, block_len);
         var choked = true;
+        var in_flight: u8 = 0;
+        const max_in_flight: u8 = 20;
 
         var remote_have_file_offsets_bitfield = std.ArrayList(u8).init(self.allocator);
         try remote_have_file_offsets_bitfield.appendNTimes(0, pieces.have_blocks_bitfield.len);
@@ -299,6 +301,7 @@ pub const Peer = struct {
                     },
                     Message.Piece => |piece| {
                         defer self.allocator.free(piece.data);
+                        in_flight -= 1;
 
                         const received_piece: usize = piece.index;
                         const received_begin: usize = piece.begin;
@@ -326,9 +329,10 @@ pub const Peer = struct {
                 std.time.sleep(1000 * std.time.ns_per_s);
             }
 
-            if (!choked) {
+            if (in_flight < max_in_flight and !choked) {
                 if (pieces.tryAcquireFileOffset(remote_have_file_offsets_bitfield.items[0..])) |file_offset| {
                     try self.requestBlock(file_offset, @intCast(u32, torrent_file.piece_len), torrent_file.total_len);
+                    in_flight += 1;
                 } else {
                     std.log.debug("No file offset acquired, sleeping", .{});
                     std.time.sleep(3 * std.time.ns_per_s);
