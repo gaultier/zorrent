@@ -81,6 +81,7 @@ pub const Pieces = struct {
     pieces_valid_mutex: std.Mutex,
     file_buffer: []u8,
     file: std.fs.File,
+    file_path: []const u8,
 
     pub fn init(total_len: usize, piece_len: usize, file_path: []const u8, hashes: []const u8, allocator: *std.mem.Allocator) !Pieces {
         const block_count: usize = utils.divCeil(usize, total_len, block_len);
@@ -131,6 +132,7 @@ pub const Pieces = struct {
             .pieces_valid_mutex = std.Mutex{},
             .file = file,
             .file_buffer = file_buffer,
+            .file_path = file_path,
         };
 
         if (file_exists) {
@@ -199,7 +201,7 @@ pub const Pieces = struct {
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.io.getStdErr().writer();
-        nosuspend stderr.print("[{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\r", .{ valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
+        nosuspend stderr.print("{}\t[{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\r", .{ self.file_path, valid, total, std.math.min(self.total_len, valid * block_len), self.total_len, percent }) catch return;
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
