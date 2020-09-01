@@ -50,16 +50,18 @@ const CheckHashWork = struct {
             if (utils.bitArrayIsSet(work.pieces.pieces_valid[0..], piece)) continue;
 
             const valid = work.pieces.valid_block_count.get();
-            const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.block_count);
             if (!Pieces.isPieceHashValid(piece, work.file_buffer[begin .. begin + real_len], work.hashes)) {
-                std.log.warn("Invalid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
+                const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.block_count);
+                std.log.warn("Invalid hash: piece={} [Valid pieces/Total Blocks/Total % {}/{} {}/{} {d:.2}%]", .{ piece, valid / work.pieces.blocks_per_piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
             } else {
                 const blocks_count = utils.divCeil(usize, real_len, block_len);
                 const val = work.pieces.valid_block_count.fetchAdd(blocks_count);
                 std.debug.assert(val <= work.pieces.block_count);
 
+                const percent_valid = @intToFloat(f64, val * 100) / @intToFloat(f64, work.pieces.block_count);
+
                 utils.bitArraySet(work.pieces.pieces_valid[0..], piece);
-                std.log.info("Valid hash: piece={}/{} [Valid blocks/Total/%={}/{}/{d:.2}%]", .{ piece, work.pieces.pieces_count, valid, work.pieces.block_count, percent_valid });
+                std.log.info("Valid hash: piece={} [Valid pieces/Total Blocks/Total % {}/{} {}/{} {d:.2}%]", .{ piece, val / work.pieces.blocks_per_piece, work.pieces.pieces_count, val, work.pieces.block_count, percent_valid });
             }
         }
     }
@@ -264,7 +266,7 @@ pub const Pieces = struct {
         {
             var w: usize = 0;
             while (w < cpus) : (w += 1) {
-                const pieces_count = self.pieces_count / cpus;
+                const pieces_count = utils.divCeil(usize, self.pieces_count, cpus);
                 const piece_begin = w * pieces_count;
 
                 work.addOneAssumeCapacity().* = CheckHashWork{
