@@ -57,12 +57,17 @@ pub const TorrentFile = struct {
 
         var file_path: ?[]const u8 = null;
         var total_len: ?isize = null;
+        const real_cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+        defer allocator.free(real_cwd_path);
+
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
             file_path = field.String;
 
             if (file_path) |fp| {
-                if (std.fs.path.isAbsolute(fp)) {
-                    std.log.alert("{}: Absolute file name {}", .{ path, fp });
+                const real = try std.fs.cwd().realpathAlloc(allocator, fp);
+
+                if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
+                    std.log.alert("{}: File name outside of the current directory: {}", .{ path, real });
                     return error.InvalidFilePath;
                 }
             }
@@ -77,8 +82,9 @@ pub const TorrentFile = struct {
                 var file_field = field.Array.items[0].Object;
                 file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
                 if (file_path) |fp| {
-                    if (std.fs.path.isAbsolute(fp)) {
-                        std.log.alert("{}: Absolute file name {}", .{ path, fp });
+                    const real = try std.fs.cwd().realpathAlloc(allocator, fp);
+                    if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
+                        std.log.alert("{}: File name outside of the current directory: {}", .{ path, real });
                         return error.InvalidFilePath;
                     }
                 }
