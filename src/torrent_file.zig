@@ -59,6 +59,13 @@ pub const TorrentFile = struct {
         var total_len: ?isize = null;
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
             file_path = field.String;
+
+            if (file_path) |fp| {
+                if (std.fs.path.isAbsolute(fp)) {
+                    std.log.alert("{}: Absolute file name {}", .{ path, fp });
+                    return error.InvalidFilePath;
+                }
+            }
         }
         if (bencode.mapLookup(&field_info.Object, "length")) |field| {
             total_len = field.Integer;
@@ -69,6 +76,13 @@ pub const TorrentFile = struct {
             if (field.Array.items.len > 0) {
                 var file_field = field.Array.items[0].Object;
                 file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
+                if (file_path) |fp| {
+                    if (std.fs.path.isAbsolute(fp)) {
+                        std.log.alert("{}: Absolute file name {}", .{ path, fp });
+                        return error.InvalidFilePath;
+                    }
+                }
+
                 total_len = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
             }
         }
