@@ -5,6 +5,8 @@ const bencode = @import("zig-bencode");
 const peer_mod = @import("peer.zig");
 const Peer = peer_mod.Peer;
 
+const max_string_len = 10_000;
+
 pub const TorrentFile = struct {
     announce_urls: [][]const u8,
     total_len: usize,
@@ -16,19 +18,19 @@ pub const TorrentFile = struct {
     piece_len: usize,
     path: []const u8,
 
-    pub fn parse(path: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
+    pub fn parse(path: []const u8, content: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
         // TODO: decide if we copy the memory from the ValueTree, or if we keep a reference to it
-        var file = try std.fs.cwd().openFile(path, std.fs.File.OpenFlags{ .read = true });
-        defer file.close();
-
-        const content = try file.readAllAlloc(allocator, (try file.stat()).size, std.math.maxInt(usize));
-
         var value = try bencode.ValueTree.parse(content, allocator);
         defer value.deinit();
 
         var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
         if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
             const real_url = field.String;
+            if (real_url.len > max_string_len) {
+                std.log.alert("{}: announce url length {} exceeds the limit {}", .{ path, real_url.len, max_string_len });
+                return error.InvalidField;
+            }
+
             if (real_url.len >= 7 and std.mem.eql(u8, real_url[0..7], "http://")) {
                 try owned_announce_urls.append(try allocator.dupe(u8, field.String));
             }
@@ -321,4 +323,9 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
         std.process.exit(1);
     };
     return size * nmemb;
+}
+
+test "parse torrent file with announce url too long" {
+    const url = "0" ** (1 + max_string_len);
+    std.testing.expectError(error.InvalidField, TorrentFile.parse("", "d8announce10000001:" ++ url ++ "e", std.testing.allocator));
 }

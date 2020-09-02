@@ -35,12 +35,14 @@ pub fn main() anyerror!void {
     const allocator = &gpa.allocator;
 
     var args = try std.process.argsAlloc(allocator);
-    const arg = if (args.len == 2) args[1] else {
+    const torrent_file_path = if (args.len == 2) args[1] else {
         try std.io.getStdOut().outStream().writeAll("zorrent <torrent file>\n");
         return;
     };
 
-    var torrent_file = try zorrent.TorrentFile.parse(arg, allocator);
+    var torrent_file_content = try std.fs.cwd().readFileAlloc(allocator, torrent_file_path, 10_000_000);
+    defer allocator.free(torrent_file_content);
+    var torrent_file = try zorrent.TorrentFile.parse(torrent_file_path, torrent_file_content, allocator);
 
     var peers: []zorrent.Peer = undefined;
     while (true) {
