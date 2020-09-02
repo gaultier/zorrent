@@ -7,7 +7,7 @@ pub const block_len: usize = 1 << 14;
 const file_name = ".zorrent_state";
 
 pub fn setAllBlocksForPiece(bitfield: []u8, piece: u32, piece_len: usize, total_len: usize) void {
-    const blocks_in_piece = piece_len / block_len;
+    const blocks_in_piece = utils.divCeil(usize, piece_len, block_len);
     var block = piece * blocks_in_piece;
     while (block * block_len < (piece + 1) * piece_len and block * block_len < total_len) : (block += 1) {
         utils.bitArraySet(bitfield, block);
@@ -131,7 +131,7 @@ pub const Pieces = struct {
             .block_count = block_count,
             .total_len = total_len,
             .piece_len = piece_len,
-            .blocks_per_piece = piece_len / block_len,
+            .blocks_per_piece = utils.divCeil(usize, piece_len, block_len),
             .pieces_count = pieces_count,
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .valid_piece_count = std.atomic.Int(usize).init(0),
