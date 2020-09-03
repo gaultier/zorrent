@@ -149,6 +149,7 @@ pub const TorrentFile = struct {
 
         try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
 
+        // libcurl expects a null terminated string
         try query.append(0);
 
         return query.toOwnedSlice();
