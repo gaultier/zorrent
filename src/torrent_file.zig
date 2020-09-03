@@ -5,8 +5,6 @@ const bencode = @import("zig-bencode");
 const peer_mod = @import("peer.zig");
 const Peer = peer_mod.Peer;
 
-const max_string_len = 10_000;
-
 pub const TorrentFile = struct {
     announce_urls: [][]const u8,
     total_len: usize,
@@ -24,9 +22,13 @@ pub const TorrentFile = struct {
         defer value.deinit();
 
         var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
+        errdefer {
+            for (owned_announce_urls.items) |url| allocator.free(url);
+            owned_announce_urls.deinit();
+        }
+
         if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
             const real_url = field.String;
-            if (real_url.len > max_string_len) return error.InvalidField;
 
             if (real_url.len >= 7 and std.mem.eql(u8, real_url[0..7], "http://")) {
                 try owned_announce_urls.append(try allocator.dupe(u8, field.String));
@@ -50,6 +52,7 @@ pub const TorrentFile = struct {
         const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
         const pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
         var owned_pieces = std.ArrayList(u8).init(allocator);
+        errdefer owned_pieces.deinit();
         try owned_pieces.appendSlice(pieces);
 
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
@@ -64,9 +67,9 @@ pub const TorrentFile = struct {
 
             if (file_path) |fp| {
                 const real = try std.fs.cwd().realpathAlloc(allocator, fp);
+                errdefer allocator.free(real);
 
                 if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-                    std.log.alert("{}: File name outside of the current directory: {}", .{ path, real });
                     return error.InvalidFilePath;
                 }
             }
@@ -83,7 +86,6 @@ pub const TorrentFile = struct {
                 if (file_path) |fp| {
                     const real = try std.fs.cwd().realpathAlloc(allocator, fp);
                     if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-                        std.log.alert("{}: File name outside of the current directory: {}", .{ path, real });
                         return error.InvalidFilePath;
                     }
                 }
@@ -93,6 +95,7 @@ pub const TorrentFile = struct {
         }
 
         var owned_file_path = std.ArrayList(u8).init(allocator);
+        errdefer owned_file_path.deinit();
         try owned_file_path.appendSlice(file_path.?);
 
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
@@ -322,9 +325,8 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
     return size * nmemb;
 }
 
-test "parse torrent file with announce url too long" {
+test "parse torrent file with file name outside of current directory" {
     const log_level: std.log.Level = .crit;
 
-    const url = "0" ** 10_000_001;
-    std.testing.expectError(error.InvalidField, TorrentFile.parse("", "d8:announce10000001:" ++ url ++ "e", std.testing.allocator));
+    std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name2:..ee", std.testing.allocator));
 }
