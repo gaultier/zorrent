@@ -326,7 +326,8 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
 }
 
 test "parse torrent file with file name outside of current directory" {
-    const log_level: std.log.Level = .crit;
-
     std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name2:..ee", std.testing.allocator));
+    std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name4:./..ee", std.testing.allocator));
+    std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name1:/ee", std.testing.allocator));
+    std.testing.expectError(error.FileNotFound, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name6:foo/..ee", std.testing.allocator));
 }
