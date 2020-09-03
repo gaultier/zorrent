@@ -26,10 +26,7 @@ pub const TorrentFile = struct {
         var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
         if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
             const real_url = field.String;
-            if (real_url.len > max_string_len) {
-                std.log.alert("{}: announce url length {} exceeds the limit {}", .{ path, real_url.len, max_string_len });
-                return error.InvalidField;
-            }
+            if (real_url.len > max_string_len) return error.InvalidField;
 
             if (real_url.len >= 7 and std.mem.eql(u8, real_url[0..7], "http://")) {
                 try owned_announce_urls.append(try allocator.dupe(u8, field.String));
@@ -326,6 +323,8 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
 }
 
 test "parse torrent file with announce url too long" {
-    const url = "0" ** (1 + max_string_len);
-    std.testing.expectError(error.InvalidField, TorrentFile.parse("", "d8announce10000001:" ++ url ++ "e", std.testing.allocator));
+    const log_level: std.log.Level = .crit;
+
+    const url = "0" ** 10_000_001;
+    std.testing.expectError(error.InvalidField, TorrentFile.parse("", "d8:announce10000001:" ++ url ++ "e", std.testing.allocator));
 }

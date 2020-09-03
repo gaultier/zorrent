@@ -34,6 +34,17 @@ pub fn build(b: *Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    // const test_step = b.step("test", "Run library tests");
-    // test_step.dependOn(&main_tests.step);
+    const test_step = b.step("test", "Run all the tests");
+    var torrent_file_test = b.addTest("src/torrent_file.zig");
+    torrent_file_test.setBuildMode(mode);
+    torrent_file_test.addPackagePath("zig-bencode", "zig-bencode/src/main.zig");
+    test_step.dependOn(&torrent_file_test.step);
+
+    var pieces_test = b.addTest("src/pieces.zig");
+    pieces_test.setBuildMode(mode);
+    test_step.dependOn(&pieces_test.step);
+
+    var peer_test = b.addTest("src/peer.zig");
+    peer_test.setBuildMode(mode);
+    test_step.dependOn(&peer_test.step);
 }
