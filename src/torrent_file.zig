@@ -65,7 +65,6 @@ pub const TorrentFile = struct {
 
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
-        var total_len: ?isize = null;
         const real_cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
         defer allocator.free(real_cwd_path);
 
@@ -80,9 +79,7 @@ pub const TorrentFile = struct {
             break :brk real;
         } else null;
 
-        if (bencode.mapLookup(&field_info.Object, "length")) |field| {
-            total_len = field.Integer;
-        }
+        var total_len: ?isize = if (bencode.mapLookup(&field_info.Object, "length")) |field| field.Integer else null;
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
             return error.UnsupportedExtension;
