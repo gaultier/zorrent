@@ -42,7 +42,9 @@ pub fn main() anyerror!void {
 
     var torrent_file_content = try std.fs.cwd().readFileAlloc(allocator, torrent_file_path, 10_000_000);
     defer allocator.free(torrent_file_content);
+
     var torrent_file = try zorrent.TorrentFile.parse(torrent_file_path, torrent_file_content, allocator);
+    defer torrent_file.deinit();
 
     var peers: []zorrent.Peer = undefined;
     while (true) {
