@@ -6,6 +6,7 @@ const peer_mod = @import("peer.zig");
 const Peer = peer_mod.Peer;
 
 pub const TorrentFile = struct {
+    allocator: *std.mem.Allocator,
     announce_urls: [][]const u8,
     total_len: usize,
     hash_info: [20]u8,
@@ -15,6 +16,13 @@ pub const TorrentFile = struct {
     pieces: []const u8,
     piece_len: usize,
     path: []const u8,
+
+    pub fn deinit(self: *TorrentFile) void {
+        for (self.announce_urls) |url| self.allocator.free(url);
+        self.allocator.free(self.announce_urls);
+        self.allocator.free(self.pieces);
+        self.allocator.free(self.path);
+    }
 
     pub fn parse(path: []const u8, content: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
         // TODO: decide if we copy the memory from the ValueTree, or if we keep a reference to it
@@ -63,40 +71,36 @@ pub const TorrentFile = struct {
         defer allocator.free(real_cwd_path);
 
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
-            file_path = field.String;
+            const real = try std.fs.cwd().realpathAlloc(allocator, field.String);
+            errdefer allocator.free(real);
 
-            if (file_path) |fp| {
-                const real = try std.fs.cwd().realpathAlloc(allocator, fp);
-                errdefer allocator.free(real);
-
-                if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-                    return error.InvalidFilePath;
-                }
+            if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
+                return error.InvalidFilePath;
             }
+
+            file_path = real;
         }
+
         if (bencode.mapLookup(&field_info.Object, "length")) |field| {
             total_len = field.Integer;
         }
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
-            // FIXME: multi file download
-            if (field.Array.items.len > 0) {
-                var file_field = field.Array.items[0].Object;
-                file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
-                if (file_path) |fp| {
-                    const real = try std.fs.cwd().realpathAlloc(allocator, fp);
-                    if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-                        return error.InvalidFilePath;
-                    }
-                }
+            return error.UnsupportedExtension;
 
-                total_len = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
-            }
+            // if (field.Array.items.len > 0) {
+            //     var file_field = field.Array.items[0].Object;
+            //     file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
+            //     if (file_path) |fp| {
+            //         const real = try std.fs.cwd().realpathAlloc(allocator, fp);
+            //         if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
+            //             return error.InvalidFilePath;
+            //         }
+            //     }
+
+            //     total_len = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
+            // }
         }
-
-        var owned_file_path = std.ArrayList(u8).init(allocator);
-        errdefer owned_file_path.deinit();
-        try owned_file_path.appendSlice(file_path.?);
 
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
         defer field_info_bencoded.deinit();
@@ -106,6 +110,7 @@ pub const TorrentFile = struct {
         std.crypto.hash.Sha1.hash(field_info_bencoded.items, hash[0..], std.crypto.hash.Sha1.Options{});
 
         return TorrentFile{
+            .allocator = allocator,
             .announce_urls = owned_announce_urls.toOwnedSlice(),
             .total_len = @intCast(usize, total_len.?),
             .hash_info = hash,
@@ -114,7 +119,7 @@ pub const TorrentFile = struct {
             .leftBytesCount = @intCast(usize, total_len.?),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
-            .path = owned_file_path.toOwnedSlice(),
+            .path = file_path.?, // FIXME: multi files
         };
     }
 
@@ -330,4 +335,14 @@ test "parse torrent file with file name outside of current directory" {
     std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name4:./..ee", std.testing.allocator));
     std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name1:/ee", std.testing.allocator));
     std.testing.expectError(error.FileNotFound, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name6:foo/..ee", std.testing.allocator));
+}
+
+test "parse torrent file" {
+    var torrent_file_content = try std.fs.cwd().readFileAlloc(std.testing.allocator, "../zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019-10-16-1254.torrent", 30_000);
+    defer std.testing.allocator.free(torrent_file_content);
+
+    var torrent_file = try TorrentFile.parse("../zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019-10-16-1254.torrent", torrent_file_content, std.testing.allocator);
+    std.testing.expectEqual(@as(usize, 273358848), torrent_file.total_len);
+
+    defer torrent_file.deinit();
 }
