@@ -65,12 +65,11 @@ pub const TorrentFile = struct {
 
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
-        var file_path: ?[]const u8 = null;
         var total_len: ?isize = null;
         const real_cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
         defer allocator.free(real_cwd_path);
 
-        if (bencode.mapLookup(&field_info.Object, "name")) |field| {
+        var file_path: ?[]const u8 = if (bencode.mapLookup(&field_info.Object, "name")) |field| brk: {
             const real = try std.fs.cwd().realpathAlloc(allocator, field.String);
             errdefer allocator.free(real);
 
@@ -78,8 +77,8 @@ pub const TorrentFile = struct {
                 return error.InvalidFilePath;
             }
 
-            file_path = real;
-        }
+            break :brk real;
+        } else null;
 
         if (bencode.mapLookup(&field_info.Object, "length")) |field| {
             total_len = field.Integer;
