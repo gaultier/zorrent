@@ -82,7 +82,7 @@ pub const TorrentFile = struct {
                 return error.InvalidFilePath;
             }
 
-            try file_paths.append(path);
+            try file_paths.append(real);
         }
 
         var total_len: ?isize = if (bencode.mapLookup(&field_info.Object, "length")) |field| field.Integer else null;
