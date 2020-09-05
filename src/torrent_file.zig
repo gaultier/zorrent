@@ -68,21 +68,14 @@ pub const TorrentFile = struct {
 
         const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
 
-        const real_cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-        defer allocator.free(real_cwd_path);
-
         var file_paths = std.ArrayList([]const u8).init(allocator);
         defer file_paths.deinit();
 
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
-            const real = try std.fs.cwd().realpathAlloc(allocator, field.String);
-            errdefer allocator.free(real);
+            const basename = std.fs.path.basename(field.String);
+            if (basename.len == 0 or std.mem.eql(u8, basename, "..")) return error.InvalidFilePath;
 
-            if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-                return error.InvalidFilePath;
-            }
-
-            try file_paths.append(real);
+            try file_paths.append(try allocator.dupe(u8, basename));
         }
 
         var total_len: isize = 0;
@@ -92,12 +85,10 @@ pub const TorrentFile = struct {
             if (field.Array.items.len > 0) {
                 var file_field = field.Array.items[0].Object;
                 const file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
-                const real = try std.fs.cwd().realpathAlloc(allocator, file_path);
-                if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-                    return error.InvalidFilePath;
-                }
+                const basename = std.fs.path.basename(file_path);
+                if (basename.len == 0 or std.mem.eql(u8, basename, "..")) return error.InvalidFilePath;
 
-                try file_paths.append(real);
+                try file_paths.append(try allocator.dupe(u8, basename));
 
                 total_len += (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
             }
@@ -338,7 +329,7 @@ test "parse torrent file with file name outside of current directory" {
     std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name2:..ee", std.testing.allocator));
     std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name4:./..ee", std.testing.allocator));
     std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name1:/ee", std.testing.allocator));
-    std.testing.expectError(error.FileNotFound, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name6:foo/..ee", std.testing.allocator));
+    std.testing.expectError(error.InvalidFilePath, TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name6:foo/..ee", std.testing.allocator));
 }
 
 test "parse torrent file" {
@@ -347,6 +338,13 @@ test "parse torrent file" {
 
     var torrent_file = try TorrentFile.parse("../zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019-10-16-1254.torrent", torrent_file_content, std.testing.allocator);
     std.testing.expectEqual(@as(usize, 273358848), torrent_file.total_len);
+
+    defer torrent_file.deinit();
+}
+
+test "parse torrent file with multiple files" {
+    var torrent_file = try TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name3:foo5:filesld6:lengthi20e4:pathl8:test.pdfeeeee", std.testing.allocator);
+    std.testing.expectEqual(@as(usize, 20), torrent_file.total_len);
 
     defer torrent_file.deinit();
 }
