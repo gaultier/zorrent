@@ -82,9 +82,9 @@ pub const Pieces = struct {
     pieces_valid_mutex: std.Mutex,
     file_buffer: []u8,
     file: std.fs.File,
-    file_path: []const u8,
+    file_paths: []const []const u8,
 
-    pub fn init(total_len: usize, piece_len: usize, file_path: []const u8, hashes: []const u8, allocator: *std.mem.Allocator) !Pieces {
+    pub fn init(total_len: usize, piece_len: usize, file_paths: []const []const u8, hashes: []const u8, allocator: *std.mem.Allocator) !Pieces {
         const block_count: usize = utils.divCeil(usize, total_len, block_len);
         const blocks_bitfield_len = utils.divCeil(usize, block_count, 8);
 
@@ -102,11 +102,14 @@ pub const Pieces = struct {
         try inflight_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
         var file_exists = true;
-        const file: std.fs.File = std.fs.cwd().openFile(file_path, .{ .write = true }) catch |err| fs_catch: {
+        if (file_paths.len == 0) return error.NoFiles;
+        if (file_paths.len > 1) return error.UnsupportedExtension;
+
+        const file: std.fs.File = std.fs.cwd().openFile(file_paths[0], .{ .write = true }) catch |err| fs_catch: {
             switch (err) {
                 std.fs.File.OpenError.FileNotFound => {
                     file_exists = false;
-                    break :fs_catch try std.fs.cwd().createFile(file_path, .{ .read = true });
+                    break :fs_catch try std.fs.cwd().createFile(file_paths[0], .{ .read = true });
                 },
                 else => return err, // TODO: Maybe we can recover in some way?
             }
@@ -138,7 +141,7 @@ pub const Pieces = struct {
             .pieces_valid_mutex = std.Mutex{},
             .file = file,
             .file_buffer = file_buffer,
-            .file_path = file_path,
+            .file_paths = file_paths,
         };
 
         if (file_exists) {
@@ -229,7 +232,7 @@ pub const Pieces = struct {
         const held = std.debug.getStderrMutex().acquire();
         defer held.release();
         const stderr = std.io.getStdErr().writer();
-        nosuspend stderr.print("\x1b[1A\x1b[2K{} [{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\n", .{ self.file_path, valid, total, std.math.min(self.total_len, valid * self.piece_len), self.total_len, percent }) catch return;
+        nosuspend stderr.print("\x1b[1A\x1b[2K{} [{}/{} {Bi:.2}/{Bi:.2}] {d:.2}%\n", .{ self.file_paths[0], valid, total, std.math.min(self.total_len, valid * self.piece_len), self.total_len, percent }) catch return;
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
@@ -368,7 +371,9 @@ test "init without an existing file" {
     defer std.os.unlink("foo") catch {};
 
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
+    const file_path = "foo";
+    const file_paths = [1][]const u8{file_path[0..]};
+    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     testing.expectEqual(@as(usize, total_len), pieces.file_buffer.len);
@@ -393,7 +398,9 @@ test "tryAcquireFileOffset" {
     defer std.os.unlink("foo") catch {};
 
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
+    const file_path = "foo";
+    const file_paths = [1][]const u8{file_path[0..]};
+    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -416,7 +423,9 @@ test "tryAcquireFileOffset at 100% completion" {
     defer std.os.unlink("foo") catch {};
 
     const total_len = 18 * block_len + 5;
-    var pieces = try Pieces.init(total_len, 2 * block_len, "foo", &[0]u8{}, testing.allocator);
+    const file_path = "foo";
+    const file_paths = [1][]const u8{file_path[0..]};
+    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     std.mem.set(u8, pieces.have_blocks_bitfield[0..], 0xff);
@@ -437,7 +446,9 @@ test "commitFileOffset" {
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    var pieces = try Pieces.init(total_len, piece_len, "foo", &[0]u8{}, testing.allocator);
+    const file_path = "foo";
+    const file_paths = [1][]const u8{file_path[0..]};
+    var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], &[0]u8{}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -520,7 +531,9 @@ test "recover state from file" {
         const hash_rest = [20 * 9]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
-        var pieces = try Pieces.init(total_len, piece_len, "foo", hashes[0..], testing.allocator);
+        const file_path = "foo";
+        const file_paths = [1][]const u8{file_path[0..]};
+        var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], hashes[0..], testing.allocator);
         defer pieces.deinit();
 
         testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);

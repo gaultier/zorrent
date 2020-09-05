@@ -15,13 +15,16 @@ pub const TorrentFile = struct {
     leftBytesCount: usize,
     pieces: []const u8,
     piece_len: usize,
-    path: []const u8,
+    file_paths: [][]const u8,
 
     pub fn deinit(self: *TorrentFile) void {
         for (self.announce_urls) |url| self.allocator.free(url);
         self.allocator.free(self.announce_urls);
+
         self.allocator.free(self.pieces);
-        self.allocator.free(self.path);
+
+        for (self.file_paths) |fp| self.allocator.free(fp);
+        self.allocator.free(self.file_paths);
     }
 
     pub fn parse(path: []const u8, content: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
@@ -68,7 +71,10 @@ pub const TorrentFile = struct {
         const real_cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
         defer allocator.free(real_cwd_path);
 
-        var file_path: ?[]const u8 = if (bencode.mapLookup(&field_info.Object, "name")) |field| brk: {
+        var file_paths = std.ArrayList([]const u8).init(allocator);
+        defer file_paths.deinit();
+
+        if (bencode.mapLookup(&field_info.Object, "name")) |field| {
             const real = try std.fs.cwd().realpathAlloc(allocator, field.String);
             errdefer allocator.free(real);
 
@@ -76,8 +82,8 @@ pub const TorrentFile = struct {
                 return error.InvalidFilePath;
             }
 
-            break :brk real;
-        } else null;
+            try file_paths.append(path);
+        }
 
         var total_len: ?isize = if (bencode.mapLookup(&field_info.Object, "length")) |field| field.Integer else null;
 
@@ -115,7 +121,7 @@ pub const TorrentFile = struct {
             .leftBytesCount = @intCast(usize, total_len.?),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
-            .path = file_path.?, // FIXME: multi files
+            .file_paths = file_paths.toOwnedSlice(),
         };
     }
 
