@@ -85,23 +85,22 @@ pub const TorrentFile = struct {
             try file_paths.append(real);
         }
 
-        var total_len: ?isize = if (bencode.mapLookup(&field_info.Object, "length")) |field| field.Integer else null;
+        var total_len: isize = 0;
+        if (bencode.mapLookup(&field_info.Object, "length")) |field| total_len += field.Integer;
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
-            return error.UnsupportedExtension;
+            if (field.Array.items.len > 0) {
+                var file_field = field.Array.items[0].Object;
+                const file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
+                const real = try std.fs.cwd().realpathAlloc(allocator, file_path);
+                if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
+                    return error.InvalidFilePath;
+                }
 
-            // if (field.Array.items.len > 0) {
-            //     var file_field = field.Array.items[0].Object;
-            //     file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
-            //     if (file_path) |fp| {
-            //         const real = try std.fs.cwd().realpathAlloc(allocator, fp);
-            //         if (!std.mem.eql(u8, real_cwd_path, std.fs.path.dirname(real) orelse real_cwd_path)) {
-            //             return error.InvalidFilePath;
-            //         }
-            //     }
+                try file_paths.append(real);
 
-            //     total_len = (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
-            // }
+                total_len += (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
+            }
         }
 
         var field_info_bencoded = std.ArrayList(u8).init(allocator);
@@ -111,14 +110,16 @@ pub const TorrentFile = struct {
         var hash: [20]u8 = undefined;
         std.crypto.hash.Sha1.hash(field_info_bencoded.items, hash[0..], std.crypto.hash.Sha1.Options{});
 
+        if (total_len == 0) return error.MissingField;
+
         return TorrentFile{
             .allocator = allocator,
             .announce_urls = owned_announce_urls.toOwnedSlice(),
-            .total_len = @intCast(usize, total_len.?),
+            .total_len = @intCast(usize, total_len),
             .hash_info = hash,
             .uploadedBytesCount = 0,
             .downloadedBytesCount = 0,
-            .leftBytesCount = @intCast(usize, total_len.?),
+            .leftBytesCount = @intCast(usize, total_len),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
             .file_paths = file_paths.toOwnedSlice(),
