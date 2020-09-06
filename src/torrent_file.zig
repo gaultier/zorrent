@@ -32,6 +32,8 @@ pub const TorrentFile = struct {
         var value = try bencode.ValueTree.parse(content, allocator);
         defer value.deinit();
 
+        if (!bencode.isObject(value.root)) return error.InvalidField;
+
         var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
         errdefer {
             for (owned_announce_urls.items) |url| allocator.free(url);
@@ -39,7 +41,9 @@ pub const TorrentFile = struct {
         }
 
         if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
-            const real_url = field.String;
+            if (!bencode.isString(field.*)) return error.InvalidField;
+
+            const real_url = field.*.String;
 
             if (real_url.len >= 7 and std.mem.eql(u8, real_url[0..7], "http://")) {
                 try owned_announce_urls.append(try allocator.dupe(u8, field.String));
@@ -47,6 +51,8 @@ pub const TorrentFile = struct {
         }
 
         if (bencode.mapLookup(&value.root.Object, "announce-list")) |field| {
+            if (!bencode.isArray(field.*)) return error.InvalidField;
+
             const urls = field.Array.items;
             for (urls) |url| {
                 const real_url = url.Array.items;
@@ -61,17 +67,26 @@ pub const TorrentFile = struct {
         }
 
         const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
-        const pieces = (bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound).String;
+        if (!bencode.isObject(field_info.*)) return error.InvalidField;
+
+        const pieces_field = bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound;
+        if (!bencode.isString(pieces_field.*)) return error.InvalidField;
+        const pieces = pieces_field.String;
+
         var owned_pieces = std.ArrayList(u8).init(allocator);
         errdefer owned_pieces.deinit();
         try owned_pieces.appendSlice(pieces);
 
-        const piece_len = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound).Integer;
+        const piece_len_field = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound);
+        if (!bencode.isInteger(piece_len_field.*)) return error.InvalidField;
+        const piece_len = piece_len_field.Integer;
 
         var file_paths = std.ArrayList([]const u8).init(allocator);
         defer file_paths.deinit();
 
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
+            if (!bencode.isString(field.*)) return error.InvalidField;
+
             const basename = std.fs.path.basename(field.String);
             if (basename.len == 0 or std.mem.eql(u8, basename, "..")) return error.InvalidFilePath;
 
@@ -79,18 +94,34 @@ pub const TorrentFile = struct {
         }
 
         var total_len: isize = 0;
-        if (bencode.mapLookup(&field_info.Object, "length")) |field| total_len += field.Integer;
+        if (bencode.mapLookup(&field_info.Object, "length")) |field| {
+            if (!bencode.isInteger(field.*)) return error.InvalidField;
+            total_len += field.Integer;
+        }
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
+            if (!bencode.isArray(field.*)) return error.InvalidField;
+
             if (field.Array.items.len > 0) {
-                var file_field = field.Array.items[0].Object;
-                const file_path = (bencode.mapLookup(&file_field, "path") orelse return error.FieldNotFound).Array.items[0].String;
-                const basename = std.fs.path.basename(file_path);
+                var file_field = field.Array.items[0];
+                if (!bencode.isObject(file_field)) return error.InvalidField;
+                var files = file_field.Object;
+
+                const file_path_field = (bencode.mapLookup(&files, "path") orelse return error.FieldNotFound);
+                if (!bencode.isArray(file_path_field.*)) return error.InvalidField;
+                const file_path_field_real = file_path_field.Array.items[0];
+
+                if (!bencode.isString(file_path_field_real)) return error.InvalidField;
+                const p = file_path_field_real.String;
+
+                const basename = std.fs.path.basename(p);
                 if (basename.len == 0 or std.mem.eql(u8, basename, "..")) return error.InvalidFilePath;
 
                 try file_paths.append(try allocator.dupe(u8, basename));
 
-                total_len += (bencode.mapLookup(&file_field, "length") orelse return error.FieldNotFound).Integer;
+                const total_len_field = bencode.mapLookup(&files, "length") orelse return error.FieldNotFound;
+                if (!bencode.isInteger(total_len_field.*)) return error.InvalidField;
+                total_len += total_len_field.Integer;
             }
         }
 
