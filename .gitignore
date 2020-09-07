@@ -7,3 +7,5 @@ CHECKSUM
 *.qcow*
 *.iso
 .zorrent_state
+*.asc
+*.manifest
