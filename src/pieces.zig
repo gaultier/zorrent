@@ -105,16 +105,23 @@ pub const Pieces = struct {
         if (file_paths.len == 0) return error.NoFiles;
         if (file_paths.len > 1) return error.UnsupportedExtension;
 
-        const file: std.fs.File = std.fs.cwd().openFile(file_paths[0], .{ .write = true }) catch |err| fs_catch: {
-            switch (err) {
-                std.fs.File.OpenError.FileNotFound => {
-                    file_exists = false;
-                    break :fs_catch try std.fs.cwd().createFile(file_paths[0], .{ .read = true });
-                },
-                else => return err, // TODO: Maybe we can recover in some way?
-            }
-        };
-        try std.os.ftruncate(file.handle, total_len);
+        var files = std.ArrayList(std.fs.File).init(allocator);
+        try files.ensureCapacity(file_paths.len);
+
+        for (file_paths) |fp| {
+            const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
+                switch (err) {
+                    std.fs.File.OpenError.FileNotFound => {
+                        file_exists = false;
+                        break :fs_catch try std.fs.cwd().createFile(fp, .{ .read = true });
+                    },
+                    else => return err, // TODO: Maybe we can recover in some way?
+                }
+            };
+            try std.os.ftruncate(file.handle, total_len); // FIXME
+
+            files.addOneAssumeCapacity().* = file;
+        }
 
         var file_buffer: []u8 = if (file_exists) file_buf: {
             break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
