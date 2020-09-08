@@ -184,18 +184,23 @@ pub const TorrentFile = struct {
         return query.toOwnedSlice();
     }
 
-    fn queryAnnounceUrl(self: TorrentFile, host: []const u8, endpoint: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
+    fn queryAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
         var queryUrl = try self.buildAnnounceUrl(url, allocator);
         defer allocator.free(queryUrl);
 
-        var connection = try std.net.tcpConnectToHost(allocator, host, 80);
-        defer connection.deinit();
+        const host = "lobste.rs";
+        const endpoint = "/recent";
 
-        try std.fmt.format(connection.writer(), "GET {} HTTP/1.1\r\nHost: {}\r\n", .{ endpoint, host });
+        std.debug.warn("Querying {}{}\n", .{ host, endpoint });
+        var connection = try std.net.tcpConnectToHost(allocator, host, 80);
+        std.debug.warn("Connected to {}\n", .{host});
+        defer connection.close();
+
+        try std.fmt.format(connection.writer(), "GET {} HTTP/1.1\r\nHost: {}\r\n\r\n", .{ endpoint, host });
 
         var response: [1 << 14]u8 = undefined;
-        try connection.readAll(response);
-        std.debug.warn("response={}\n", .{response});
+        const len = try connection.readAll(response[0..]);
+        std.debug.warn("response={}\n", .{response[0..len]});
 
         // var curl_res: c.CURLcode = undefined;
         // curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
@@ -263,7 +268,7 @@ pub const TorrentFile = struct {
         //     return error.CurlPerform;
         // }
 
-        var tracker_response = try bencode.ValueTree.parse(response, allocator);
+        var tracker_response = try bencode.ValueTree.parse(response[0..len], allocator);
         return tracker_response;
     }
 
@@ -278,9 +283,9 @@ pub const TorrentFile = struct {
         return true;
     }
 
-    fn addPeersFromTracker(self: TorrentFile, host: []const u8, endpoint: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
+    fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
         std.log.notice("Tracker {}: trying to contact...", .{url});
-        var tracker_response = try self.queryAnnounceUrl(host, endpoint, allocator);
+        var tracker_response = try self.queryAnnounceUrl(url, allocator);
         std.log.notice("Tracker {} replied successfuly", .{url});
 
         var dict_field = tracker_response.root;
