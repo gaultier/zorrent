@@ -184,77 +184,86 @@ pub const TorrentFile = struct {
         return query.toOwnedSlice();
     }
 
-    fn queryAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
+    fn queryAnnounceUrl(self: TorrentFile, host: []const u8, endpoint: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
         var queryUrl = try self.buildAnnounceUrl(url, allocator);
         defer allocator.free(queryUrl);
 
-        var curl_res: c.CURLcode = undefined;
-        curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlInitFailed;
-        }
-        defer c.curl_global_cleanup();
+        var connection = try std.net.tcpConnectToHost(allocator, host, 80);
+        defer connection.deinit();
 
-        var curl: ?*c.CURL = null;
-        var headers: [*c]c.curl_slist = null;
+        try std.fmt.format(connection.writer(), "GET {} HTTP/1.1\r\nHost: {}\r\n", .{ endpoint, host });
 
-        curl = c.curl_easy_init() orelse {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlInitFailed;
-        };
-        defer c.curl_easy_cleanup(curl);
+        var response: [1 << 14]u8 = undefined;
+        try connection.readAll(response);
+        std.debug.warn("response={}\n", .{response});
 
-        // url
-        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlSetOptFailed;
-        }
+        // var curl_res: c.CURLcode = undefined;
+        // curl_res = c.curl_global_init(c.CURL_GLOBAL_ALL);
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlInitFailed;
+        // }
+        // defer c.curl_global_cleanup();
 
-        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlSetOptFailed;
-        }
+        // var curl: ?*c.CURL = null;
+        // var headers: [*c]c.curl_slist = null;
 
-        const timeout_seconds: usize = 10;
-        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_TIMEOUT, timeout_seconds);
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlSetOptFailed;
-        }
+        // curl = c.curl_easy_init() orelse {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlInitFailed;
+        // };
+        // defer c.curl_easy_cleanup(curl);
 
-        const follow_redirect_enabled: usize = 1;
-        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_FOLLOWLOCATION, follow_redirect_enabled);
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlSetOptFailed;
-        }
+        // // url
+        // curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_URL, @ptrCast([*:0]const u8, queryUrl));
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlSetOptFailed;
+        // }
 
-        var res_body = std.ArrayList(u8).init(allocator);
-        curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlSetOptFailed;
-        }
+        // curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEFUNCTION, writeCallback);
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlSetOptFailed;
+        // }
 
-        // perform the call
-        curl_res = c.curl_easy_perform(curl);
-        if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
-            const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
-            return error.CurlPerform;
-        }
+        // const timeout_seconds: usize = 10;
+        // curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_TIMEOUT, timeout_seconds);
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlSetOptFailed;
+        // }
 
-        var tracker_response = try bencode.ValueTree.parse(res_body.items[0..], allocator);
+        // const follow_redirect_enabled: usize = 1;
+        // curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_FOLLOWLOCATION, follow_redirect_enabled);
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlSetOptFailed;
+        // }
+
+        // var res_body = std.ArrayList(u8).init(allocator);
+        // curl_res = c.curl_easy_setopt(curl, c.CURLoption.CURLOPT_WRITEDATA, &res_body);
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlSetOptFailed;
+        // }
+
+        // // perform the call
+        // curl_res = c.curl_easy_perform(curl);
+        // if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
+        //     const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
+        //     std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+        //     return error.CurlPerform;
+        // }
+
+        var tracker_response = try bencode.ValueTree.parse(response, allocator);
         return tracker_response;
     }
 
@@ -269,9 +278,9 @@ pub const TorrentFile = struct {
         return true;
     }
 
-    fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
+    fn addPeersFromTracker(self: TorrentFile, host: []const u8, endpoint: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
         std.log.notice("Tracker {}: trying to contact...", .{url});
-        var tracker_response = try self.queryAnnounceUrl(url, allocator);
+        var tracker_response = try self.queryAnnounceUrl(host, endpoint, allocator);
         std.log.notice("Tracker {} replied successfuly", .{url});
 
         var dict_field = tracker_response.root;
