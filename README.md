@@ -2,7 +2,6 @@
 Experimental Zig torrent library and client example program.
 
     $ git pull --recurse-submodules https://github.com/gaultier/zorrent.git
-    # Requires libcurl
     $ zig build
     $ ./zig-cache/bin/zorrent zig-bencode/input/OpenBSD_6.6_alpha_install66.iso-2019-10-16-1254.torrent
     OpenBSD_6.6_alpha_install66.iso [1043/1043 260.70MiB/260.70MiB] 100.00%
