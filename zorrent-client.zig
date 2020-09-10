@@ -59,7 +59,7 @@ pub fn main() anyerror!void {
     defer frames.deinit();
     try frames.ensureCapacity(peers.len);
 
-    var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, torrent_file.file_paths, torrent_file.pieces[0..], allocator);
+    var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, torrent_file.file_paths, torrent_file.pieces[0..], torrent_file.file_sizes, allocator);
     const pieces_len: usize = zorrent.utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
     defer pieces.deinit();
 

@@ -16,6 +16,7 @@ pub const TorrentFile = struct {
     pieces: []const u8,
     piece_len: usize,
     file_paths: [][]const u8,
+    file_sizes: []const usize,
 
     pub fn deinit(self: *TorrentFile) void {
         for (self.announce_urls) |url| self.allocator.free(url);
@@ -84,6 +85,9 @@ pub const TorrentFile = struct {
         var file_paths = std.ArrayList([]const u8).init(allocator);
         defer file_paths.deinit();
 
+        var file_sizes = std.ArrayList(usize).init(allocator);
+        defer file_sizes.deinit();
+
         if (bencode.mapLookup(&field_info.Object, "name")) |field| {
             if (!bencode.isString(field.*)) return error.InvalidField;
 
@@ -93,10 +97,14 @@ pub const TorrentFile = struct {
             try file_paths.append(try allocator.dupe(u8, basename));
         }
 
-        var total_len: isize = 0;
+        var total_len: usize = 0;
         if (bencode.mapLookup(&field_info.Object, "length")) |field| {
             if (!bencode.isInteger(field.*)) return error.InvalidField;
-            total_len += field.Integer;
+
+            const len = field.Integer;
+            if (len <= 0) return error.InvalidField;
+            total_len = @intCast(usize, len);
+            try file_sizes.append(@intCast(usize, len));
         }
 
         if (bencode.mapLookup(&field_info.Object, "files")) |field| {
@@ -121,7 +129,12 @@ pub const TorrentFile = struct {
 
                 const total_len_field = bencode.mapLookup(&files, "length") orelse return error.FieldNotFound;
                 if (!bencode.isInteger(total_len_field.*)) return error.InvalidField;
-                total_len += total_len_field.Integer;
+
+                const len = field.Integer;
+                if (len <= 0) return error.InvalidField;
+
+                try file_sizes.append(@intCast(usize, len));
+                total_len += @intCast(usize, len);
             }
         }
 
@@ -145,6 +158,7 @@ pub const TorrentFile = struct {
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
             .file_paths = file_paths.toOwnedSlice(),
+            .file_sizes = file_sizes.toOwnedSlice(),
         };
     }
 

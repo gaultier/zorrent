@@ -80,11 +80,11 @@ pub const Pieces = struct {
     pieces_count: usize,
     valid_piece_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
-    file_buffer: []u8,
-    file: std.fs.File,
+    file_buffers: [][]u8,
+    files: []std.fs.File,
     file_paths: []const []const u8,
 
-    pub fn init(total_len: usize, piece_len: usize, file_paths: []const []const u8, hashes: []const u8, allocator: *std.mem.Allocator) !Pieces {
+    pub fn init(total_len: usize, piece_len: usize, file_paths: []const []const u8, hashes: []const u8, file_sizes: []const usize, allocator: *std.mem.Allocator) !Pieces {
         const block_count: usize = utils.divCeil(usize, total_len, block_len);
         const blocks_bitfield_len = utils.divCeil(usize, block_count, 8);
 
@@ -101,14 +101,23 @@ pub const Pieces = struct {
         defer inflight_blocks_bitfield.deinit();
         try inflight_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
-        var file_exists = true;
         if (file_paths.len == 0) return error.NoFiles;
         if (file_paths.len > 1) return error.UnsupportedExtension;
 
         var files = std.ArrayList(std.fs.File).init(allocator);
         try files.ensureCapacity(file_paths.len);
 
-        for (file_paths) |fp| {
+        var file_buffers = std.ArrayList([]u8).init(allocator);
+        defer file_buffers.deinit();
+        try file_buffers.ensureCapacity(file_paths.len);
+
+        var files = std.ArrayList(std.fs.File).init(allocator);
+        defer files.deinit();
+        try files.ensureCapacity(file_paths.len);
+
+        for (file_paths) |fp, i| {
+            var file_exists = true;
+
             const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
                 switch (err) {
                     std.fs.File.OpenError.FileNotFound => {
@@ -118,20 +127,22 @@ pub const Pieces = struct {
                     else => return err, // TODO: Maybe we can recover in some way?
                 }
             };
-            try std.os.ftruncate(file.handle, total_len); // FIXME
+            const len = file_sizes[i];
+            try std.os.ftruncate(file.handle, len);
 
             files.addOneAssumeCapacity().* = file;
-        }
 
-        var file_buffer: []u8 = if (file_exists) file_buf: {
-            break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
-        } else file_buf: {
-            var file_buffer = std.ArrayList(u8).init(allocator);
-            defer file_buffer.deinit();
-            try file_buffer.appendNTimes(0, total_len);
-            break :file_buf file_buffer.toOwnedSlice();
-        };
-        std.debug.assert(file_buffer.len == total_len);
+            var file_buffer: []u8 = if (file_exists) file_buf: {
+                break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
+            } else file_buf: {
+                var file_buffer = std.ArrayList(u8).init(allocator);
+                defer file_buffer.deinit();
+                try file_buffer.appendNTimes(0, total_len);
+                break :file_buf file_buffer.toOwnedSlice();
+            };
+            file_buffers.addOneAssumeCapacity().* = file_buffer;
+        }
+        // std.debug.assert(file_buffer.len == total_len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
