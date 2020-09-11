@@ -243,25 +243,41 @@ pub const Pieces = struct {
 
                 std.mem.copy(u8, self.file_buffer[file_offset .. file_offset + data.len], data);
 
-                var file: ?std.fs.File = null;
+                var file_i: ?usize = null;
                 {
                     var total_len_so_far: usize = 0;
                     for (self.files) |f, i| {
                         const len = self.file_sizes[i];
                         if (total_len_so_far <= file_offset and file_offset < total_len_so_far + len) {
-                            file = f;
+                            file_i = i;
                             break;
                         }
                         total_len_so_far += len;
                     }
-                    std.debug.assert(file != null);
+                    std.debug.assert(file_i != null);
                     std.debug.assert(total_len_so_far <= self.total_len);
                 }
 
                 // FIXME: multi
-                try file.?.seekTo(file_offset);
-                _ = try file.?.writeAll(data);
-                try file.?.seekTo(0);
+                var file = self.files[file_i.?];
+                var len = self.file_sizes[file_i.?];
+
+                try file.seekTo(file_offset);
+                var write_len = std.math.min(data.len, len - file_offset);
+                _ = try file.writeAll(data[0..write_len]);
+                try file.seekTo(0);
+
+                if (file_offset + data.len > len) {
+                    file_i.? += 1;
+                    std.debug.assert(file_i.? < self.files.len);
+
+                    file = self.files[file_i.?];
+                    len = self.file_sizes[file_i.?];
+                    try file.seekTo(file_offset);
+                    write_len = std.math.min(data.len, len - file_offset);
+                    _ = try file.writeAll(data[0..write_len]);
+                    try file.seekTo(0);
+                }
 
                 utils.bitArraySet(self.have_blocks_bitfield, block);
 
