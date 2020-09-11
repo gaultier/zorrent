@@ -28,7 +28,6 @@ pub const TorrentFile = struct {
         self.allocator.free(self.file_paths);
 
         self.allocator.free(self.file_sizes);
-        self.allocator.free(self.file_paths);
     }
 
     pub fn parse(path: []const u8, content: []const u8, allocator: *std.mem.Allocator) !TorrentFile {
@@ -133,7 +132,7 @@ pub const TorrentFile = struct {
                 const total_len_field = bencode.mapLookup(&files, "length") orelse return error.FieldNotFound;
                 if (!bencode.isInteger(total_len_field.*)) return error.InvalidField;
 
-                const len = field.Integer;
+                const len = total_len_field.Integer;
                 if (len <= 0) return error.InvalidField;
 
                 try file_sizes.append(@intCast(usize, len));
