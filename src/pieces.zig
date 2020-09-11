@@ -86,8 +86,6 @@ pub const Pieces = struct {
     file_sizes: []const usize,
 
     pub fn init(total_len: usize, piece_len: usize, file_paths: []const []const u8, hashes: []const u8, file_sizes: []const usize, allocator: *std.mem.Allocator) !Pieces {
-        std.debug.assert(file_paths.len == file_sizes.len);
-
         const block_count: usize = utils.divCeil(usize, total_len, block_len);
         const blocks_bitfield_len = utils.divCeil(usize, block_count, 8);
 
@@ -140,6 +138,7 @@ pub const Pieces = struct {
         }
         std.debug.assert(file_buffer.items.len == total_len);
         std.debug.assert(total_len_so_far == total_len);
+        std.debug.assert(files.items.len == file_paths.len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
