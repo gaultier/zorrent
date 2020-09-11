@@ -148,7 +148,6 @@ pub const Pieces = struct {
         }
         std.debug.assert(file_buffer.items.len == total_len);
         std.debug.assert(total_len_so_far == total_len);
-        std.debug.assert(files.items.len == file_paths.len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
