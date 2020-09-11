@@ -238,7 +238,7 @@ pub const Pieces = struct {
                 {
                     var total_len_so_far: usize = 0;
                     for (self.files) |f, i| {
-                        const len = self.file_sizes[i];
+                        const len = self.file_sizes[if (self.file_paths.len > 1) i - 1 else i];
                         if (total_len_so_far <= file_offset and file_offset < total_len_so_far + len) {
                             file = f;
                             break;
