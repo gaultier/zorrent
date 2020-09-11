@@ -258,6 +258,7 @@ pub const Pieces = struct {
                     std.debug.assert(total_len_so_far <= self.total_len);
                 }
 
+                // FIXME: multi
                 try file.?.seekTo(file_offset);
                 _ = try file.?.writeAll(data);
                 try file.?.seekTo(0);
