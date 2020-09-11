@@ -82,6 +82,7 @@ pub const Pieces = struct {
     pieces_valid_mutex: std.Mutex,
     file_buffer: []u8,
     files: []std.fs.File,
+    dir: ?std.fs.Dir,
     file_paths: []const []const u8,
     file_sizes: []const usize,
 
@@ -113,28 +114,28 @@ pub const Pieces = struct {
         try file_buffer.appendNTimes(0, total_len);
 
         var total_len_so_far: usize = 0;
-        for (file_paths) |fp, i| {
-            var file_exists = true;
+        var dir: ?std.fs.Dir = null;
 
-            var file = if (file_paths.len > 1 and i == 0) fs: {
-                break :fs std.fs.cwd().openDir(fp, .{}) catch |err| {
+        for (file_paths) |fp, i| {
+            if (file_paths.len > 1 and i == 0) {
+                dir = std.fs.cwd().openDir(fp, .{}) catch |err| {
                     return err;
                 };
-            } else fs: {
-                const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
-                    switch (err) {
-                        std.fs.File.OpenError.FileNotFound => {
-                            file_exists = false;
-                            break :fs_catch try std.fs.cwd().createFile(fp, .{ .read = true });
-                        },
-                        else => return err, // TODO: Maybe we can recover in some way?
-                    }
-                };
-                break :fs file;
+                continue;
+            }
+
+            var file_exists = true;
+            const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
+                switch (err) {
+                    std.fs.File.OpenError.FileNotFound => {
+                        file_exists = false;
+                        break :fs_catch try std.fs.cwd().createFile(fp, .{ .read = true });
+                    },
+                    else => return err, // TODO: Maybe we can recover in some way?
+                }
             };
             files.addOneAssumeCapacity().* = file;
 
-            if (file_paths.len > 1 and i == 0) continue;
             const len = file_sizes[if (file_paths.len > 1) i - 1 else i];
             try std.os.ftruncate(file.handle, len);
 
@@ -166,6 +167,7 @@ pub const Pieces = struct {
             .file_buffer = file_buffer.toOwnedSlice(),
             .file_paths = file_paths,
             .file_sizes = file_sizes,
+            .dir = dir,
         };
 
         // if (file_exists) {
@@ -183,6 +185,8 @@ pub const Pieces = struct {
 
         for (self.files) |file| file.close();
         self.allocator.free(self.files);
+
+        if (self.dir) |*d| d.close();
     }
 
     pub fn isFinished(self: *Pieces) bool {
