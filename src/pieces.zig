@@ -407,7 +407,7 @@ test "init without an existing file" {
     const total_len = 18 * block_len + 5;
     const file_path = "foo";
     const file_paths = [1][]const u8{file_path[0..]};
-    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, &[1]usize{total_len}, testing.allocator);
     defer pieces.deinit();
 
     testing.expectEqual(@as(usize, total_len), pieces.file_buffer.len);
@@ -434,7 +434,7 @@ test "tryAcquireFileOffset" {
     const total_len = 18 * block_len + 5;
     const file_path = "foo";
     const file_paths = [1][]const u8{file_path[0..]};
-    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, &[1]usize{total_len}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -459,7 +459,7 @@ test "tryAcquireFileOffset at 100% completion" {
     const total_len = 18 * block_len + 5;
     const file_path = "foo";
     const file_paths = [1][]const u8{file_path[0..]};
-    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], &[0]u8{}, &[1]usize{total_len}, testing.allocator);
     defer pieces.deinit();
 
     std.mem.set(u8, pieces.have_blocks_bitfield[0..], 0xff);
@@ -482,7 +482,7 @@ test "commitFileOffset" {
     const piece_len = 2 * block_len;
     const file_path = "foo";
     const file_paths = [1][]const u8{file_path[0..]};
-    var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], &[0]u8{}, testing.allocator);
+    var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], &[0]u8{}, &[1]usize{total_len}, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -520,7 +520,7 @@ test "commitFileOffset" {
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], pieces.file_buffer[0..block_len]));
 
-        const disk_data = try pieces.file.readAllAlloc(std.testing.allocator, total_len, total_len);
+        const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
         defer std.testing.allocator.free(disk_data);
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], disk_data[0..block_len]));
     }
@@ -544,7 +544,7 @@ test "commitFileOffset" {
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], pieces.file_buffer[0 .. 2 * block_len]));
 
-        const disk_data = try pieces.file.readAllAlloc(std.testing.allocator, total_len, total_len);
+        const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
         defer std.testing.allocator.free(disk_data);
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], disk_data[0 .. 2 * block_len]));
 
@@ -567,7 +567,7 @@ test "recover state from file" {
 
         const file_path = "foo";
         const file_paths = [1][]const u8{file_path[0..]};
-        var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], hashes[0..], testing.allocator);
+        var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], hashes[0..], &[1]usize{total_len}, testing.allocator);
         defer pieces.deinit();
 
         testing.expectEqual(@as(usize, 3), pieces.have_blocks_bitfield.len);
@@ -592,7 +592,7 @@ test "recover state from file" {
         var file_buffer: [10 * piece_len]u8 = undefined;
         for (file_buffer) |*f| f.* = 9;
 
-        try pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
+        try pieces.checkPiecesValid(file_buffer[0..], &[1]usize{total_len}, hashes[0..]);
         testing.expectEqual(@as(usize, 1), pieces.valid_piece_count.get());
     }
 }
