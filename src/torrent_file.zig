@@ -268,7 +268,7 @@ pub const TorrentFile = struct {
         curl_res = c.curl_easy_perform(curl);
         if (@enumToInt(curl_res) != @bitCast(c_uint, c.CURLE_OK)) {
             const err_msg: []const u8 = std.mem.spanZ(c.curl_easy_strerror(curl_res));
-            std.log.emerg("libcurl initialization failed: {}", .{err_msg});
+            std.log.emerg("libcurl curl_easy_perform failed: {}", .{err_msg});
             return error.CurlPerform;
         }
 
