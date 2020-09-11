@@ -30,7 +30,7 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 
 const CheckHashWork = struct {
     pieces: *Pieces,
-    file_buffer: []const u8,
+    file_buffers: []const u8,
     hashes: []const u8,
     piece_start: usize,
     pieces_count: usize,
@@ -44,12 +44,12 @@ const CheckHashWork = struct {
         while (piece < piece_end) : (piece += 1) {
             const begin: usize = piece * work.pieces.piece_len;
             const expected_len: usize = work.pieces.piece_len;
-            const real_len: usize = std.math.min(work.file_buffer.len - begin, work.pieces.piece_len);
+            const real_len: usize = std.math.min(work.file_buffers.len - begin, work.pieces.piece_len);
             std.debug.assert(real_len <= work.pieces.piece_len);
 
             if (utils.bitArrayIsSet(work.pieces.pieces_valid[0..], piece)) continue;
 
-            if (!Pieces.isPieceHashValid(piece, work.file_buffer[begin .. begin + real_len], work.hashes)) {
+            if (!Pieces.isPieceHashValid(piece, work.file_buffers[begin .. begin + real_len], work.hashes)) {
                 const valid = work.pieces.valid_piece_count.get();
                 const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.pieces_count);
 
@@ -331,7 +331,7 @@ pub const Pieces = struct {
 
                 work.addOneAssumeCapacity().* = CheckHashWork{
                     .pieces = self,
-                    .file_buffer = file_buffer,
+                    .file_buffers = file_buffers,
                     .hashes = hashes,
                     .piece_start = piece_begin,
                     .pieces_count = pieces_count,
