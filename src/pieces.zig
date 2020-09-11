@@ -30,7 +30,7 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 
 const CheckHashWork = struct {
     pieces: *Pieces,
-    file_buffers: []const u8,
+    file_buffers: [][]const u8,
     hashes: []const u8,
     piece_start: usize,
     pieces_count: usize,
