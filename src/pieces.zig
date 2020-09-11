@@ -83,6 +83,7 @@ pub const Pieces = struct {
     file_buffers: [][]u8,
     files: []std.fs.File,
     file_paths: []const []const u8,
+    file_sizes: []const usize,
 
     pub fn init(total_len: usize, piece_len: usize, file_paths: []const []const u8, hashes: []const u8, file_sizes: []const usize, allocator: *std.mem.Allocator) !Pieces {
         const block_count: usize = utils.divCeil(usize, total_len, block_len);
@@ -156,12 +157,13 @@ pub const Pieces = struct {
             .pieces_valid_mutex = std.Mutex{},
             .files = files.toOwnedSlice(),
             .file_buffers = file_buffers.toOwnedSlice(),
-            .file_paths = file_paths.toOwnedSlice(),
+            .file_paths = file_paths,
+            .file_sizes = file_sizes,
         };
 
-        if (file_exists) {
-            _ = try pieces.checkPiecesValid(pieces.file_buffer, hashes);
-        }
+        // if (file_exists) {
+        _ = try pieces.checkPiecesValid(pieces.file_buffers, pieces.file_sizes, hashes);
+        // }
 
         return pieces;
     }
@@ -307,7 +309,7 @@ pub const Pieces = struct {
         return;
     }
 
-    fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
+    fn checkPiecesValid(self: *Pieces, file_buffers: [][]const u8, file_sizes: []const usize, hashes: []const u8) !void {
         // Print one newline to avoid erasing the command line invocation
         std.io.getStdErr().writeAll("\n") catch {};
 
