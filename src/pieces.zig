@@ -244,8 +244,8 @@ pub const Pieces = struct {
                 std.mem.copy(u8, self.file_buffer[file_offset .. file_offset + data.len], data);
 
                 var file_i: ?usize = null;
+                var total_len_so_far: usize = 0;
                 {
-                    var total_len_so_far: usize = 0;
                     for (self.files) |f, i| {
                         const len = self.file_sizes[i];
                         if (total_len_so_far <= file_offset and file_offset < total_len_so_far + len) {
@@ -263,7 +263,7 @@ pub const Pieces = struct {
                 var len = self.file_sizes[file_i.?];
 
                 try file.seekTo(file_offset);
-                var write_len = std.math.min(data.len, len - file_offset);
+                var write_len = std.math.min(data.len, total_len_so_far - file_offset);
                 _ = try file.writeAll(data[0..write_len]);
                 try file.seekTo(0);
 
@@ -272,9 +272,11 @@ pub const Pieces = struct {
                     std.debug.assert(file_i.? < self.files.len);
 
                     file = self.files[file_i.?];
+                    total_len_so_far += len;
                     len = self.file_sizes[file_i.?];
+
                     try file.seekTo(file_offset);
-                    write_len = std.math.min(data.len, len - file_offset);
+                    write_len = std.math.min(data.len, total_len_so_far - file_offset);
                     _ = try file.writeAll(data[0..write_len]);
                     try file.seekTo(0);
                 }
