@@ -125,11 +125,12 @@ pub const Pieces = struct {
             }
 
             var file_exists = true;
-            const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
+            const d = if (file_paths.len > 1) dir.? else std.fs.cwd();
+            const file: std.fs.File = d.openFile(fp, .{ .write = true }) catch |err| fs_catch: {
                 switch (err) {
                     std.fs.File.OpenError.FileNotFound => {
                         file_exists = false;
-                        break :fs_catch try std.fs.cwd().createFile(fp, .{ .read = true });
+                        break :fs_catch try d.createFile(fp, .{ .read = true });
                     },
                     else => return err, // TODO: Maybe we can recover in some way?
                 }
