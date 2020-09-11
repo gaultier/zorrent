@@ -103,7 +103,6 @@ pub const Pieces = struct {
         try inflight_blocks_bitfield.appendNTimes(0, blocks_bitfield_len);
 
         if (file_paths.len == 0) return error.NoFiles;
-        if (file_paths.len > 1) return error.UnsupportedExtension;
 
         var files = std.ArrayList(std.fs.File).init(allocator);
         defer files.deinit();
