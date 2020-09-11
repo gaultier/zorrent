@@ -129,17 +129,16 @@ pub const Pieces = struct {
             };
             files.addOneAssumeCapacity().* = file;
 
-            if (!(file_paths.len > 1 and i == 0)) {
-                const len = file_sizes[i];
-                try std.os.ftruncate(file.handle, len);
+            if (file_paths.len > 1 and i == 0) continue;
+            const len = file_sizes[if (file_paths.len > 1) i - 1 else i];
+            try std.os.ftruncate(file.handle, len);
 
-                if (file_exists) {
-                    const read = try file.inStream().readAll(file_buffer.items[total_len_so_far .. total_len_so_far + len]);
-                    std.debug.assert(read == len);
-                }
-
-                total_len_so_far += len;
+            if (file_exists) {
+                const read = try file.inStream().readAll(file_buffer.items[total_len_so_far .. total_len_so_far + len]);
+                std.debug.assert(read == len);
             }
+
+            total_len_so_far += len;
         }
         std.debug.assert(file_buffer.items.len == total_len);
         std.debug.assert(total_len_so_far == total_len);
