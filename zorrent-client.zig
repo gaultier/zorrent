@@ -64,7 +64,7 @@ pub fn main() anyerror!void {
     defer pieces.deinit();
 
     for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, pieces.file_buffers, &pieces);
+        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, pieces.file_buffer, &pieces);
     }
 
     for (frames.items) |*frame, i| {

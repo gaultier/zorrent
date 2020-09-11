@@ -30,7 +30,7 @@ pub fn markPiecesAsHaveFromBitfield(remote_have_file_offsets_bitfield: []u8, pie
 
 const CheckHashWork = struct {
     pieces: *Pieces,
-    file_buffers: [][]const u8,
+    file_buffer: []const u8,
     hashes: []const u8,
     piece_start: usize,
     pieces_count: usize,
@@ -44,12 +44,12 @@ const CheckHashWork = struct {
         while (piece < piece_end) : (piece += 1) {
             const begin: usize = piece * work.pieces.piece_len;
             const expected_len: usize = work.pieces.piece_len;
-            const real_len: usize = std.math.min(work.file_buffers.len - begin, work.pieces.piece_len);
+            const real_len: usize = std.math.min(work.file_buffer.len - begin, work.pieces.piece_len);
             std.debug.assert(real_len <= work.pieces.piece_len);
 
             if (utils.bitArrayIsSet(work.pieces.pieces_valid[0..], piece)) continue;
 
-            if (!Pieces.isPieceHashValid(piece, work.file_buffers[begin .. begin + real_len], work.hashes)) {
+            if (!Pieces.isPieceHashValid(piece, work.file_buffer[begin .. begin + real_len], work.hashes)) {
                 const valid = work.pieces.valid_piece_count.get();
                 const percent_valid = @intToFloat(f64, valid * 100) / @intToFloat(f64, work.pieces.pieces_count);
 
@@ -80,7 +80,7 @@ pub const Pieces = struct {
     pieces_count: usize,
     valid_piece_count: std.atomic.Int(usize),
     pieces_valid_mutex: std.Mutex,
-    file_buffers: [][]u8,
+    file_buffer: []u8,
     files: []std.fs.File,
     file_paths: []const []const u8,
     file_sizes: []const usize,
@@ -109,9 +109,9 @@ pub const Pieces = struct {
         defer files.deinit();
         try files.ensureCapacity(file_paths.len);
 
-        var file_buffers = std.ArrayList([]u8).init(allocator);
-        defer file_buffers.deinit();
-        try file_buffers.ensureCapacity(file_paths.len);
+        var file_buffer = std.ArrayList(u8).init(allocator);
+        defer file_buffer.deinit();
+        try file_buffer.ensureCapacity(total_len);
 
         for (file_paths) |fp, i| {
             var file_exists = true;
@@ -130,17 +130,17 @@ pub const Pieces = struct {
 
             files.addOneAssumeCapacity().* = file;
 
-            var file_buffer: []u8 = if (file_exists) file_buf: {
+            var buf: []u8 = if (file_exists) file_buf: {
                 break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
             } else file_buf: {
-                var file_buffer = std.ArrayList(u8).init(allocator);
-                defer file_buffer.deinit();
-                try file_buffer.appendNTimes(0, total_len);
-                break :file_buf file_buffer.toOwnedSlice();
+                var buf = std.ArrayList(u8).init(allocator);
+                defer buf.deinit();
+                try buf.appendNTimes(0, total_len);
+                break :file_buf buf.toOwnedSlice();
             };
-            file_buffers.addOneAssumeCapacity().* = file_buffer;
+            file_buffer.appendSliceAssumeCapacity(buf);
         }
-        // std.debug.assert(file_buffer.len == total_len);
+        std.debug.assert(file_buffer.items.len == total_len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
@@ -156,13 +156,13 @@ pub const Pieces = struct {
             .valid_piece_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
             .files = files.toOwnedSlice(),
-            .file_buffers = file_buffers.toOwnedSlice(),
+            .file_buffer = file_buffer.toOwnedSlice(),
             .file_paths = file_paths,
             .file_sizes = file_sizes,
         };
 
         // if (file_exists) {
-        _ = try pieces.checkPiecesValid(pieces.file_buffers, pieces.file_sizes, hashes);
+        _ = try pieces.checkPiecesValid(pieces.file_buffer, pieces.file_sizes, hashes);
         // }
 
         return pieces;
@@ -309,7 +309,7 @@ pub const Pieces = struct {
         return;
     }
 
-    fn checkPiecesValid(self: *Pieces, file_buffers: [][]const u8, file_sizes: []const usize, hashes: []const u8) !void {
+    fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, file_sizes: []const usize, hashes: []const u8) !void {
         // Print one newline to avoid erasing the command line invocation
         std.io.getStdErr().writeAll("\n") catch {};
 
@@ -331,7 +331,7 @@ pub const Pieces = struct {
 
                 work.addOneAssumeCapacity().* = CheckHashWork{
                     .pieces = self,
-                    .file_buffers = file_buffers,
+                    .file_buffer = file_buffer,
                     .hashes = hashes,
                     .piece_start = piece_begin,
                     .pieces_count = pieces_count,

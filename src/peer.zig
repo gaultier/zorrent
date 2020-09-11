@@ -249,7 +249,7 @@ pub const Peer = struct {
         }
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: [][]u8, pieces: *Pieces) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []u8, pieces: *Pieces) !void {
         try self.retryConnect(pieces);
         try self.waitForHandshake(torrent_file, pieces);
         try self.sendInterested();
