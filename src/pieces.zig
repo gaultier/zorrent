@@ -104,8 +104,6 @@ pub const Pieces = struct {
 
         if (file_paths.len == 0) return error.NoFiles;
 
-        // TODO: mkdir
-
         var files = std.ArrayList(std.fs.File).init(allocator);
         defer files.deinit();
         try files.ensureCapacity(file_paths.len);
@@ -118,14 +116,21 @@ pub const Pieces = struct {
         for (file_paths) |fp, i| {
             var file_exists = true;
 
-            const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
-                switch (err) {
-                    std.fs.File.OpenError.FileNotFound => {
-                        file_exists = false;
-                        break :fs_catch try std.fs.cwd().createFile(fp, .{ .read = true });
-                    },
-                    else => return err, // TODO: Maybe we can recover in some way?
-                }
+            var file = if (file_paths.len > 1 and i == 0) fs: {
+                break :fs std.fs.cwd().openDir(fp, .{}) catch |err| {
+                    return err;
+                };
+            } else fs: {
+                const file: std.fs.File = std.fs.cwd().openFile(fp, .{ .write = true }) catch |err| fs_catch: {
+                    switch (err) {
+                        std.fs.File.OpenError.FileNotFound => {
+                            file_exists = false;
+                            break :fs_catch try std.fs.cwd().createFile(fp, .{ .read = true });
+                        },
+                        else => return err, // TODO: Maybe we can recover in some way?
+                    }
+                };
+                break :fs file;
             };
             files.addOneAssumeCapacity().* = file;
 
