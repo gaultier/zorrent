@@ -111,8 +111,9 @@ pub const Pieces = struct {
 
         var file_buffer = std.ArrayList(u8).init(allocator);
         defer file_buffer.deinit();
-        try file_buffer.ensureCapacity(total_len);
+        try file_buffer.appendNTimes(0, total_len);
 
+        var total_len_so_far: usize = 0;
         for (file_paths) |fp, i| {
             var file_exists = true;
 
@@ -130,17 +131,14 @@ pub const Pieces = struct {
 
             files.addOneAssumeCapacity().* = file;
 
-            var buf: []u8 = if (file_exists) file_buf: {
-                break :file_buf try file.inStream().readAllAlloc(allocator, total_len);
-            } else file_buf: {
-                var buf = std.ArrayList(u8).init(allocator);
-                defer buf.deinit();
-                try buf.appendNTimes(0, len);
-                break :file_buf buf.toOwnedSlice();
-            };
-            file_buffer.appendSliceAssumeCapacity(buf);
+            if (file_exists) {
+                const read = try file.inStream().readAll(file_buffer.items[total_len_so_far .. total_len_so_far + len]);
+                std.debug.assert(read == len);
+            }
+            total_len_so_far += len;
         }
         std.debug.assert(file_buffer.items.len == total_len);
+        std.debug.assert(total_len_so_far == total_len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
@@ -162,7 +160,7 @@ pub const Pieces = struct {
         };
 
         // if (file_exists) {
-        _ = try pieces.checkPiecesValid(pieces.file_buffer, hashes);
+        // _ = try pieces.checkPiecesValid(pieces.file_buffer, hashes);
         // }
 
         return pieces;
@@ -333,20 +331,22 @@ pub const Pieces = struct {
         std.io.getStdErr().writeAll("\n") catch {};
 
         const cpus = std.Thread.cpuCount() catch 4;
+        const worker_count = std.math.min(cpus, self.pieces_count);
+        const pieces_count = utils.divCeil(usize, self.pieces_count, worker_count);
 
         var work = std.ArrayList(CheckHashWork).init(self.allocator);
-        try work.ensureCapacity(cpus);
+        try work.ensureCapacity(worker_count);
         defer work.deinit();
 
         var workers = std.ArrayList(*std.Thread).init(self.allocator);
-        try workers.ensureCapacity(cpus);
+        try workers.ensureCapacity(worker_count);
         defer workers.deinit();
 
         {
             var w: usize = 0;
-            while (w < cpus) : (w += 1) {
-                const pieces_count = utils.divCeil(usize, self.pieces_count, cpus);
+            while (w < worker_count) : (w += 1) {
                 const piece_begin = w * pieces_count;
+                std.debug.assert(piece_begin < self.pieces_count);
 
                 work.addOneAssumeCapacity().* = CheckHashWork{
                     .pieces = self,
@@ -594,7 +594,7 @@ test "recover state from file" {
         var file_buffer: [10 * piece_len]u8 = undefined;
         for (file_buffer) |*f| f.* = 9;
 
-        try pieces.checkPiecesValid(file_buffer[0..], &[1]usize{total_len}, hashes[0..]);
+        try pieces.checkPiecesValid(file_buffer[0..], hashes[0..]);
         testing.expectEqual(@as(usize, 1), pieces.valid_piece_count.get());
     }
 }
