@@ -105,15 +105,12 @@ pub const Pieces = struct {
         if (file_paths.len > 1) return error.UnsupportedExtension;
 
         var files = std.ArrayList(std.fs.File).init(allocator);
+        defer files.deinit();
         try files.ensureCapacity(file_paths.len);
 
         var file_buffers = std.ArrayList([]u8).init(allocator);
         defer file_buffers.deinit();
         try file_buffers.ensureCapacity(file_paths.len);
-
-        var files = std.ArrayList(std.fs.File).init(allocator);
-        defer files.deinit();
-        try files.ensureCapacity(file_paths.len);
 
         for (file_paths) |fp, i| {
             var file_exists = true;
@@ -157,9 +154,9 @@ pub const Pieces = struct {
             .pieces_valid = pieces_valid.toOwnedSlice(),
             .valid_piece_count = std.atomic.Int(usize).init(0),
             .pieces_valid_mutex = std.Mutex{},
-            .file = file,
-            .file_buffer = file_buffer,
-            .file_paths = file_paths,
+            .files = files.toOwnedSlice(),
+            .file_buffers = file_buffers.toOwnedSlice(),
+            .file_paths = file_paths.toOwnedSlice(),
         };
 
         if (file_exists) {
