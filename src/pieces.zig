@@ -135,7 +135,7 @@ pub const Pieces = struct {
             } else file_buf: {
                 var buf = std.ArrayList(u8).init(allocator);
                 defer buf.deinit();
-                try buf.appendNTimes(0, total_len);
+                try buf.appendNTimes(0, len);
                 break :file_buf buf.toOwnedSlice();
             };
             file_buffer.appendSliceAssumeCapacity(buf);
@@ -162,7 +162,7 @@ pub const Pieces = struct {
         };
 
         // if (file_exists) {
-        _ = try pieces.checkPiecesValid(pieces.file_buffer, pieces.file_sizes, hashes);
+        _ = try pieces.checkPiecesValid(pieces.file_buffer, hashes);
         // }
 
         return pieces;
@@ -270,6 +270,8 @@ pub const Pieces = struct {
     }
 
     fn isPieceHashValid(piece: usize, piece_data: []const u8, hashes: []const u8) bool {
+        std.debug.assert(piece < hashes.len / 20);
+
         const expected_hash = hashes[piece * 20 .. (piece + 1) * 20];
         var actual_hash: [20]u8 = undefined;
         std.crypto.hash.Sha1.hash(piece_data[0..], actual_hash[0..], std.crypto.hash.Sha1.Options{});
@@ -326,7 +328,7 @@ pub const Pieces = struct {
         return;
     }
 
-    fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, file_sizes: []const usize, hashes: []const u8) !void {
+    fn checkPiecesValid(self: *Pieces, file_buffer: []const u8, hashes: []const u8) !void {
         // Print one newline to avoid erasing the command line invocation
         std.io.getStdErr().writeAll("\n") catch {};
 
