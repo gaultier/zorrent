@@ -26,6 +26,9 @@ pub const TorrentFile = struct {
 
         for (self.file_paths) |fp| self.allocator.free(fp);
         self.allocator.free(self.file_paths);
+
+        self.allocator.free(self.file_sizes);
+        self.allocator.free(self.file_paths);
     }
 
     pub fn parse(path: []const u8, content: []const u8, allocator: *std.mem.Allocator) !TorrentFile {

@@ -173,7 +173,9 @@ pub const Pieces = struct {
         self.allocator.free(self.inflight_blocks_bitfield);
         self.allocator.free(self.pieces_valid);
         self.allocator.free(self.file_buffer);
-        self.file.close();
+
+        for (self.files) |file| file.close();
+        self.allocator.free(self.files);
     }
 
     pub fn isFinished(self: *Pieces) bool {
@@ -229,9 +231,24 @@ pub const Pieces = struct {
                 if (utils.bitArrayIsSet(self.have_blocks_bitfield, block)) return;
 
                 std.mem.copy(u8, self.file_buffer[file_offset .. file_offset + data.len], data);
-                try self.file.seekTo(file_offset);
-                _ = try self.file.writeAll(data);
-                try self.file.seekTo(0);
+
+                var file: ?std.fs.File = null;
+                {
+                    var len: usize = 0;
+                    for (self.files) |f, i| {
+                        len += self.file_sizes[i];
+                        if (file_offset >= len) {
+                            file = f;
+                            break;
+                        }
+                    }
+                    std.debug.assert(file != null);
+                    std.debug.assert(len < self.total_len);
+                }
+
+                try file.?.seekTo(file_offset);
+                _ = try file.?.writeAll(data);
+                try file.?.seekTo(0);
 
                 utils.bitArraySet(self.have_blocks_bitfield, block);
 
