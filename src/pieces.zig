@@ -118,7 +118,7 @@ pub const Pieces = struct {
 
         for (file_paths) |fp, i| {
             if (file_paths.len > 1 and i == 0) {
-                dir = std.fs.cwd().openDir(fp, .{}) catch |err| {
+                dir = std.fs.cwd().makeOpenPath(fp, .{}) catch |err| {
                     return err;
                 };
                 continue;
