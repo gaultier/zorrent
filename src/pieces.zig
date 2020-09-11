@@ -263,7 +263,7 @@ pub const Pieces = struct {
                 var len = self.file_sizes[file_i.?];
 
                 try file.seekTo(file_offset);
-                var write_len = std.math.min(data.len, total_len_so_far - file_offset);
+                var write_len = std.math.min(data.len, len + total_len_so_far - file_offset);
                 _ = try file.writeAll(data[0..write_len]);
                 try file.seekTo(0);
 
@@ -276,7 +276,7 @@ pub const Pieces = struct {
                     len = self.file_sizes[file_i.?];
 
                     try file.seekTo(file_offset);
-                    write_len = std.math.min(data.len, total_len_so_far - file_offset);
+                    write_len = std.math.min(data.len, len + total_len_so_far - file_offset);
                     _ = try file.writeAll(data[0..write_len]);
                     try file.seekTo(0);
                 }
