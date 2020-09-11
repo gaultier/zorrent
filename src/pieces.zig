@@ -104,6 +104,8 @@ pub const Pieces = struct {
 
         if (file_paths.len == 0) return error.NoFiles;
 
+        // TODO: mkdir
+
         var files = std.ArrayList(std.fs.File).init(allocator);
         defer files.deinit();
         try files.ensureCapacity(file_paths.len);
@@ -125,16 +127,19 @@ pub const Pieces = struct {
                     else => return err, // TODO: Maybe we can recover in some way?
                 }
             };
-            const len = file_sizes[i];
-            try std.os.ftruncate(file.handle, len);
-
             files.addOneAssumeCapacity().* = file;
 
-            if (file_exists) {
-                const read = try file.inStream().readAll(file_buffer.items[total_len_so_far .. total_len_so_far + len]);
-                std.debug.assert(read == len);
+            if (!(file_paths.len > 1 and i == 0)) {
+                const len = file_sizes[i];
+                try std.os.ftruncate(file.handle, len);
+
+                if (file_exists) {
+                    const read = try file.inStream().readAll(file_buffer.items[total_len_so_far .. total_len_so_far + len]);
+                    std.debug.assert(read == len);
+                }
+
+                total_len_so_far += len;
             }
-            total_len_so_far += len;
         }
         std.debug.assert(file_buffer.items.len == total_len);
         std.debug.assert(total_len_so_far == total_len);
