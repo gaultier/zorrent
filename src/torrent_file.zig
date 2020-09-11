@@ -94,7 +94,7 @@ pub const TorrentFile = struct {
             if (!bencode.isString(field.*)) return error.InvalidField;
 
             const basename = std.fs.path.basename(field.String);
-            if (basename.len == 0 or std.mem.eql(u8, basename, "..")) return error.InvalidFilePath;
+            if (std.mem.eql(u8, basename, "..") or !std.mem.eql(u8, basename, field.String)) return error.InvalidFilePath;
 
             try file_paths.append(try allocator.dupe(u8, basename));
         }
@@ -113,30 +113,32 @@ pub const TorrentFile = struct {
             if (!bencode.isArray(field.*)) return error.InvalidField;
 
             if (field.Array.items.len > 0) {
-                var file_field = field.Array.items[0];
-                if (!bencode.isObject(file_field)) return error.InvalidField;
-                var files = file_field.Object;
+                for (field.Array.items) |file_field| {
+                    if (!bencode.isObject(file_field)) return error.InvalidField;
+                    var files = file_field.Object;
 
-                const file_path_field = (bencode.mapLookup(&files, "path") orelse return error.FieldNotFound);
-                if (!bencode.isArray(file_path_field.*)) return error.InvalidField;
-                const file_path_field_real = file_path_field.Array.items[0];
+                    const file_path_field = (bencode.mapLookup(&files, "path") orelse return error.FieldNotFound);
+                    if (!bencode.isArray(file_path_field.*)) return error.InvalidField;
+                    const file_path_field_real = file_path_field.Array.items[0];
 
-                if (!bencode.isString(file_path_field_real)) return error.InvalidField;
-                const p = file_path_field_real.String;
+                    if (!bencode.isString(file_path_field_real)) return error.InvalidField;
+                    const p = file_path_field_real.String;
 
-                const basename = std.fs.path.basename(p);
-                if (basename.len == 0 or std.mem.eql(u8, basename, "..")) return error.InvalidFilePath;
+                    const basename = std.fs.path.basename(p);
+                    if (std.mem.eql(u8, basename, "..") or !std.mem.eql(u8, basename, p)) return error.InvalidFilePath;
 
-                try file_paths.append(try allocator.dupe(u8, basename));
+                    try file_paths.append(try allocator.dupe(u8, basename));
 
-                const total_len_field = bencode.mapLookup(&files, "length") orelse return error.FieldNotFound;
-                if (!bencode.isInteger(total_len_field.*)) return error.InvalidField;
+                    const total_len_field = bencode.mapLookup(&files, "length") orelse return error.FieldNotFound;
+                    if (!bencode.isInteger(total_len_field.*)) return error.InvalidField;
 
-                const len = total_len_field.Integer;
-                if (len <= 0) return error.InvalidField;
+                    const len = total_len_field.Integer;
+                    if (len <= 0) return error.InvalidField;
 
-                try file_sizes.append(@intCast(usize, len));
-                total_len += @intCast(usize, len);
+                    try file_sizes.append(@intCast(usize, len));
+
+                    total_len += @intCast(usize, len);
+                }
             }
         }
 
@@ -401,9 +403,19 @@ test "parse torrent file" {
     defer torrent_file.deinit();
 }
 
-test "parse torrent file with multiple files" {
+test "parse torrent with multiple files" {
     var torrent_file = try TorrentFile.parse("", "d8:announce14:http://foo.com4:infod12:piece lengthi1e6:pieces1:04:name3:foo5:filesld6:lengthi20e4:pathl8:test.pdfeeeee", std.testing.allocator);
     std.testing.expectEqual(@as(usize, 20), torrent_file.total_len);
+
+    defer torrent_file.deinit();
+}
+
+test "parse real torrent with multiple files" {
+    var torrent_file_content = try std.fs.cwd().readFileAlloc(std.testing.allocator, "zig-bencode/input/wizard_oz.torrent", 30_000);
+    defer std.testing.allocator.free(torrent_file_content);
+
+    var torrent_file = try TorrentFile.parse("zig-bencode/input/wizard_oz.torrent", torrent_file_content, std.testing.allocator);
+    std.testing.expectEqual(@as(usize, 8621319 + 46758 + 2357), torrent_file.total_len);
 
     defer torrent_file.deinit();
 }
