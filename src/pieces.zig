@@ -232,16 +232,17 @@ pub const Pieces = struct {
 
                 var file: ?std.fs.File = null;
                 {
-                    var len: usize = 0;
+                    var total_len_so_far: usize = 0;
                     for (self.files) |f, i| {
-                        len += self.file_sizes[i];
-                        if (file_offset >= len) {
+                        const len = self.file_sizes[i];
+                        if (total_len_so_far <= file_offset and file_offset < total_len_so_far + len) {
                             file = f;
                             break;
                         }
+                        total_len_so_far += len;
                     }
                     std.debug.assert(file != null);
-                    std.debug.assert(len < self.total_len);
+                    std.debug.assert(total_len_so_far <= self.total_len);
                 }
 
                 try file.?.seekTo(file_offset);
