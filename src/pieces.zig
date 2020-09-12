@@ -113,7 +113,7 @@ pub const Pieces = struct {
         defer file_buffer.deinit();
         try file_buffer.appendNTimes(0, total_len);
 
-        var total_len_so_far: usize = 0;
+        var total_file_len_so_far: usize = 0;
         var dir: ?std.fs.Dir = null;
 
         for (file_paths) |fp, i| {
@@ -141,14 +141,14 @@ pub const Pieces = struct {
             try std.os.ftruncate(file.handle, len);
 
             if (file_exists) {
-                const read = try file.inStream().readAll(file_buffer.items[total_len_so_far .. total_len_so_far + len]);
+                const read = try file.inStream().readAll(file_buffer.items[total_file_len_so_far .. total_file_len_so_far + len]);
                 std.debug.assert(read == len);
             }
 
-            total_len_so_far += len;
+            total_file_len_so_far += len;
         }
         std.debug.assert(file_buffer.items.len == total_len);
-        std.debug.assert(total_len_so_far == total_len);
+        std.debug.assert(total_file_len_so_far == total_len);
 
         var pieces = Pieces{
             .have_blocks_bitfield = have_blocks_bitfield.toOwnedSlice(),
@@ -241,33 +241,27 @@ pub const Pieces = struct {
                 // If another peer has already provided this block
                 if (utils.bitArrayIsSet(self.have_blocks_bitfield, block)) return;
 
-                std.mem.copy(u8, self.file_buffer[file_offset .. file_offset + data.len], data);
+                const global_end = file_offset + data.len;
+                const global_start = file_offset;
+                std.mem.copy(u8, self.file_buffer[global_start..global_end], data);
 
-                var b = file_offset;
-                while (b < file_offset + data.len) : (b += 1) {
-                    var file_i: ?usize = null;
-                    var total_len_so_far: usize = 0;
-
-                    for (self.files) |f, i| {
-                        const len = self.file_sizes[i];
-                        if (total_len_so_far <= file_offset and file_offset < total_len_so_far + len) {
-                            file_i = i;
-                            break;
-                        }
-                        total_len_so_far += len;
-                    }
-                    std.debug.assert(file_i != null);
-                    std.debug.assert(total_len_so_far <= self.total_len);
-
-                    const file = self.files[file_i.?];
-                    const len = self.file_sizes[file_i.?];
-
-                    try file.seekTo(file_offset);
-                    const write_len = std.math.min(data.len, len + total_len_so_far - file_offset);
-                    _ = try file.writeAll(data[0..write_len]);
+                var total_file_len_so_far: usize = 0;
+                for (self.files) |file, i| {
                     try file.seekTo(0);
+                    const file_len = self.file_sizes[i];
 
-                    b += write_len;
+                    var file_byte: usize = 0;
+                    while (file_byte < file_len and file_byte < data.len) : (file_byte += 1) {
+                        const global_pos = file_byte + total_file_len_so_far;
+
+                        if (global_pos >= global_start and global_pos < global_end) {
+                            const value = data[file_byte];
+                            std.debug.warn("Write file_byte={} value={}\n", .{ file_byte, value });
+                            try file.writeAll(data[file_byte .. file_byte + 1]);
+                            try file.seekBy(1);
+                        }
+                    }
+                    total_file_len_so_far += file_len;
                 }
 
                 utils.bitArraySet(self.have_blocks_bitfield, block);
@@ -630,9 +624,11 @@ test "commitFileOffset multifiles" {
     std.os.unlink("foo") catch {};
     std.os.unlink("bar") catch {};
     std.os.unlink("baz") catch {};
+    std.os.unlink("dir") catch {};
     defer std.os.unlink("foo") catch {};
     defer std.os.unlink("bar") catch {};
     defer std.os.unlink("baz") catch {};
+    defer std.os.unlink("dir") catch {};
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
