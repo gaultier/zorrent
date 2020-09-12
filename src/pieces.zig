@@ -235,11 +235,12 @@ pub const Pieces = struct {
             const start = std.math.max(accumulated_file_size, file_offset);
             const end = std.math.min(accumulated_file_size + file_size, file_offset + data_len);
             const overlap_len = end - start;
+            std.debug.warn("#{} file_size={} file_offset={} accumulated_file_size={} start={} end={} overlap_len={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, overlap_len, data_len, file.getPos() });
             if (overlap_len > 0) {
                 try file.seekTo(if (accumulated_file_size > file_offset) accumulated_file_size - file_offset else 0);
                 try file.writeAll(self.file_buffer[start..end]);
                 try file.seekTo(0);
-            }
+            } else break;
             accumulated_file_size += file_size;
         }
     }
@@ -659,7 +660,7 @@ test "commitFileOffset multifiles" {
 
     // We only have one block, not the whole first piece, so no hash check can be done
     {
-        try pieces.commitFileOffset(0 * block_len, data[0..], hashes[0..]);
+        try pieces.commitFileOffset(0 * block_len, data[0..block_len], hashes[0..]);
 
         testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
