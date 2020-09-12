@@ -633,14 +633,14 @@ test "recover state from file" {
 }
 
 test "commitFileOffset multifiles" {
-    std.os.unlink("first.bin") catch {};
-    std.os.unlink("second.bin") catch {};
-    std.os.unlink("third.bin") catch {};
-    std.os.unlink("commitFileOffsetMulti.bin") catch {};
-    defer std.os.unlink("first.bin") catch {};
-    defer std.os.unlink("second.bin") catch {};
-    defer std.os.unlink("third.bin") catch {};
-    defer std.os.unlink("commitFileOffsetMulti.bin") catch {};
+    std.os.unlink("commitFileOffsetMulti.bin/first.bin") catch {};
+    std.os.unlink("commitFileOffsetMulti.bin/second.bin") catch {};
+    std.os.unlink("commitFileOffsetMulti.bin/third.bin") catch {};
+    std.os.rmdir("commitFileOffsetMulti.bin") catch {};
+    defer std.os.unlink("commitFileOffsetMulti.bin/first.bin") catch {};
+    defer std.os.unlink("commitFileOffsetMulti.bin/second.bin") catch {};
+    defer std.os.unlink("commitFileOffsetMulti.bin/third.bin") catch {};
+    defer std.os.rmdir("commitFileOffsetMulti.bin") catch {};
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
