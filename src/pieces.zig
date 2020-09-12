@@ -636,13 +636,16 @@ test "commitFileOffset multifiles" {
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    const file_path = "foo";
-    const file_paths = [1][]const u8{file_path[0..]};
+    const file_path_0 = "dir";
+    const file_path_1 = "foo";
+    const file_path_2 = "bar";
+    const file_path_3 = "baz";
+    const file_paths = [4][]const u8{ file_path_0[0..], file_path_1[0..], file_path_2[0..], file_path_3[0..] };
     const hash = [20]u8{ 0xF1, 0x20, 0xBA, 0xD5, 0xAA, 0x2F, 0xC4, 0x86, 0x34, 0x9B, 0xEF, 0xED, 0x84, 0x4F, 0x37, 0x4C, 0x57, 0xEB, 0xE7, 0xD8 };
     const hash_rest = [_]u8{0} ** (20 * 9);
     const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
-    var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], hashes[0..], &[1]usize{total_len}, testing.allocator);
+    var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], hashes[0..], &[3]usize{ block_len - 1, block_len - 1, total_len - 2 * (block_len - 1) }, testing.allocator);
     defer pieces.deinit();
 
     var remote_have_blocks_bitfield = std.ArrayList(u8).init(testing.allocator);
@@ -674,37 +677,49 @@ test "commitFileOffset multifiles" {
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
 
-        std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], pieces.file_buffer[0..block_len]));
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], pieces.file_buffer[0 .. block_len - 1]));
+        std.testing.expectEqual(true, std.mem.eql(u8, data[block_len - 1 .. block_len], pieces.file_buffer[block_len - 1 .. block_len]));
 
-        const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
-        defer std.testing.allocator.free(disk_data);
-        std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], disk_data[0..block_len]));
+        const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        defer std.testing.allocator.free(disk_data_0);
+        defer std.testing.allocator.free(disk_data_1);
+
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
+        std.testing.expectEqual(true, std.mem.eql(u8, data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0..]));
     }
 
     // We now have the full piece
-    {
-        try pieces.commitFileOffset(1 * block_len, data[0..], hashes[0..]);
-        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
-        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
+    // {
+    //     try pieces.commitFileOffset(1 * block_len, data[0..], hashes[0..]);
+    //     testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
+    //     testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
 
-        testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
-        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+    //     testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
+    //     testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
 
-        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], pieces.file_buffer[0 .. 2 * block_len]));
+    //     std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], pieces.file_buffer[0 .. block_len - 1]));
+    //     std.testing.expectEqual(true, std.mem.eql(u8, data[block_len - 1 .. 2 * (block_len - 1)], pieces.file_buffer[0 .. block_len - 1]));
+    //     std.testing.expectEqual(true, std.mem.eql(u8, data[2 * (block_len - 1) ..], pieces.file_buffer[2 * (block_len - 1) ..]));
 
-        const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
-        defer std.testing.allocator.free(disk_data);
-        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], disk_data[0 .. 2 * block_len]));
+    //     const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+    //     const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+    //     const disk_data_2 = try pieces.files[2].inStream().readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
+    //     defer std.testing.allocator.free(disk_data_0);
+    //     defer std.testing.allocator.free(disk_data_1);
+    //     defer std.testing.allocator.free(disk_data_2);
 
-        testing.expectEqual(true, Pieces.isPieceHashValid(0, disk_data[0..piece_len], hashes[0..]));
-        testing.expectEqual(false, Pieces.isPieceHashValid(1, disk_data[piece_len .. 2 * piece_len], hashes[0..]));
-    }
+    //     std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data[0 .. 2 * block_len]));
+
+    //     testing.expectEqual(true, Pieces.isPieceHashValid(0, disk_data[0..piece_len], hashes[0..]));
+    //     testing.expectEqual(false, Pieces.isPieceHashValid(1, disk_data[piece_len .. 2 * piece_len], hashes[0..]));
+    // }
 }
