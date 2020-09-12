@@ -241,8 +241,8 @@ pub const Pieces = struct {
                 // If another peer has already provided this block
                 if (utils.bitArrayIsSet(self.have_blocks_bitfield, block)) return;
 
-                const global_end = file_offset + data.len;
                 const global_start = file_offset;
+                const global_end = global_start + data.len;
                 std.mem.copy(u8, self.file_buffer[global_start..global_end], data);
 
                 var total_file_len_so_far: usize = 0;
@@ -256,12 +256,14 @@ pub const Pieces = struct {
 
                         if (global_pos >= global_start and global_pos < global_end) {
                             const value = data[file_byte];
-                            std.debug.warn("Write file_byte={} value={}\n", .{ file_byte, value });
-                            try file.writeAll(data[file_byte .. file_byte + 1]);
-                            try file.seekBy(1);
+                            // std.debug.warn("Write file #{} file_pos={}  file_byte={} value={} global_start={} global_end={}\n", .{ i, file.getPos(), file_byte, value, global_start, global_end });
+                            try file.outStream().writeByte(value);
                         }
                     }
+
                     total_file_len_so_far += file_len;
+
+                    try file.seekTo(0);
                 }
 
                 utils.bitArraySet(self.have_blocks_bitfield, block);
@@ -419,11 +421,11 @@ test "markPiecesAsHaveFromBitfield" {
 }
 
 test "init without an existing file" {
-    std.os.unlink("foo") catch {};
-    defer std.os.unlink("foo") catch {};
+    std.os.unlink("init_without_existing_file.bin") catch {};
+    defer std.os.unlink("init_without_existing_file.bin") catch {};
 
     const total_len = 18 * block_len + 5;
-    const file_path = "foo";
+    const file_path = "init_without_existing_file.bin";
     const file_paths = [1][]const u8{file_path[0..]};
     const hashes: [20 * 10]u8 = [_]u8{0} ** (20 * 10);
 
@@ -448,11 +450,11 @@ test "init without an existing file" {
 }
 
 test "tryAcquireFileOffset" {
-    std.os.unlink("foo") catch {};
-    defer std.os.unlink("foo") catch {};
+    std.os.unlink("tryAcquireFileOffset.bin") catch {};
+    defer std.os.unlink("tryAcquireFileOffset.bin") catch {};
 
     const total_len = 18 * block_len + 5;
-    const file_path = "foo";
+    const file_path = "tryAcquireFileOffset.bin";
     const file_paths = [1][]const u8{file_path[0..]};
     const hashes: [20 * 10]u8 = [_]u8{0} ** (20 * 10);
     var pieces = try Pieces.init(total_len, 2 * block_len, file_paths[0..], hashes[0..], &[1]usize{total_len}, testing.allocator);
@@ -474,11 +476,11 @@ test "tryAcquireFileOffset" {
 }
 
 test "tryAcquireFileOffset at 100% completion" {
-    std.os.unlink("foo") catch {};
-    defer std.os.unlink("foo") catch {};
+    std.os.unlink("tryAcquireFileOffset100%.bin") catch {};
+    defer std.os.unlink("tryAcquireFileOffset100%.bin") catch {};
 
     const total_len = 18 * block_len + 5;
-    const file_path = "foo";
+    const file_path = "tryAcquireFileOffset100%.bin";
     const file_paths = [1][]const u8{file_path[0..]};
     const hashes: [20 * 10]u8 = [_]u8{0} ** (20 * 10);
 
@@ -498,12 +500,12 @@ test "tryAcquireFileOffset at 100% completion" {
 }
 
 test "commitFileOffset" {
-    std.os.unlink("foo") catch {};
-    defer std.os.unlink("foo") catch {};
+    std.os.unlink("commitFileOffset.bin") catch {};
+    defer std.os.unlink("commitFileOffset.bin") catch {};
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    const file_path = "foo";
+    const file_path = "commitFileOffset.bin";
     const file_paths = [1][]const u8{file_path[0..]};
     const hash = [20]u8{ 0xF1, 0x20, 0xBA, 0xD5, 0xAA, 0x2F, 0xC4, 0x86, 0x34, 0x9B, 0xEF, 0xED, 0x84, 0x4F, 0x37, 0x4C, 0x57, 0xEB, 0xE7, 0xD8 };
     const hash_rest = [_]u8{0} ** (20 * 9);
@@ -525,7 +527,7 @@ test "commitFileOffset" {
 
     // We only have one block, not the whole first piece, so no hash check can be done
     {
-        try pieces.commitFileOffset(0 * block_len, data[0..], hashes[0..]);
+        try pieces.commitFileOffset(0 * block_len, data[0..block_len], hashes[0..]);
 
         testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
@@ -545,6 +547,7 @@ test "commitFileOffset" {
 
         const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
         defer std.testing.allocator.free(disk_data);
+
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], disk_data[0..block_len]));
     }
 
@@ -577,8 +580,8 @@ test "commitFileOffset" {
 }
 
 test "recover state from file" {
-    std.os.unlink("foo") catch {};
-    defer std.os.unlink("foo") catch {};
+    std.os.unlink("recover_state_from_file.bin") catch {};
+    defer std.os.unlink("recover_state_from_file.bin") catch {};
 
     {
         const total_len = 18 * block_len + 5;
@@ -588,7 +591,7 @@ test "recover state from file" {
         const hash_rest = [_]u8{0} ** (20 * 9);
         const hashes: [20 * 10]u8 = hash ++ hash_rest;
 
-        const file_path = "foo";
+        const file_path = "recover_state_from_file.bin";
         const file_paths = [1][]const u8{file_path[0..]};
         var pieces = try Pieces.init(total_len, piece_len, file_paths[0..], hashes[0..], &[1]usize{total_len}, testing.allocator);
         defer pieces.deinit();
@@ -621,21 +624,21 @@ test "recover state from file" {
 }
 
 test "commitFileOffset multifiles" {
-    std.os.unlink("foo") catch {};
-    std.os.unlink("bar") catch {};
-    std.os.unlink("baz") catch {};
-    std.os.unlink("dir") catch {};
-    defer std.os.unlink("foo") catch {};
+    std.os.unlink("commitFileOffsetMulti.bin") catch {};
+    std.os.unlink("bar.bin") catch {};
+    std.os.unlink("baz.bin") catch {};
+    std.os.unlink("dir.bin") catch {};
+    defer std.os.unlink("commitFileOffsetMulti.bin") catch {};
     defer std.os.unlink("bar") catch {};
     defer std.os.unlink("baz") catch {};
     defer std.os.unlink("dir") catch {};
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    const file_path_0 = "dir";
-    const file_path_1 = "foo";
-    const file_path_2 = "bar";
-    const file_path_3 = "baz";
+    const file_path_0 = "dir.bin";
+    const file_path_1 = "commitFileOffsetMulti.bin";
+    const file_path_2 = "bar.bin";
+    const file_path_3 = "baz.bin";
     const file_paths = [4][]const u8{ file_path_0[0..], file_path_1[0..], file_path_2[0..], file_path_3[0..] };
     const hash = [20]u8{ 0xF1, 0x20, 0xBA, 0xD5, 0xAA, 0x2F, 0xC4, 0x86, 0x34, 0x9B, 0xEF, 0xED, 0x84, 0x4F, 0x37, 0x4C, 0x57, 0xEB, 0xE7, 0xD8 };
     const hash_rest = [_]u8{0} ** (20 * 9);

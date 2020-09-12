@@ -1,5 +1,6 @@
 zig-cache
 *.opf
+*.bin
 *.jpg
 *.pdf
 CHECKSUM
