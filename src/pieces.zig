@@ -730,6 +730,11 @@ test "commitFileOffset multifiles" {
 
         std.testing.expectEqualStrings(data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0 .. block_len - 1]);
 
+        try pieces.files[2].seekTo(0);
+        const disk_data_2 = try pieces.files[2].inStream().readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
+        defer std.testing.allocator.free(disk_data_2);
+        std.testing.expectEqualStrings(data[2 * (block_len - 1) .. piece_len], disk_data_2[0..2]);
+
         testing.expectEqual(true, Pieces.isPieceHashValid(0, pieces.file_buffer[0..piece_len], hashes[0..]));
         testing.expectEqual(false, Pieces.isPieceHashValid(1, pieces.file_buffer[piece_len .. 2 * piece_len], hashes[0..]));
     }
