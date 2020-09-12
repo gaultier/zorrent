@@ -227,6 +227,25 @@ pub const Pieces = struct {
         }
     }
 
+    fn writeBlockToDisk(self: *Pieces, file_offset: usize, data: []const u8) !void {
+        var remaining: usize = data.len;
+        var current_file_offset = file_offset;
+        var accumulated_file_size: usize = 0;
+
+        var file_i: ?usize = null;
+        for (self.files) |file, i| {
+            const file_size = self.file_sizes[i];
+            if (current_file_offset >= accumulated_file_size) {
+                file_i = i;
+                break;
+            }
+            accumulated_file_size += file_size;
+        }
+        std.debug.assert(file_i != null);
+
+        var file = self.files[file_i.?];
+    }
+
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, data: []const u8, hashes: []const u8) !void {
         std.debug.assert(file_offset < self.total_len);
 
@@ -245,28 +264,7 @@ pub const Pieces = struct {
                 const global_end = global_start + data.len;
                 std.mem.copy(u8, self.file_buffer[global_start..global_end], data);
 
-                var total_file_len_so_far: usize = 0;
-                for (self.files) |file, i| {
-                    try file.seekTo(0);
-                    const file_len = self.file_sizes[i];
-
-                    var file_byte: usize = 0;
-                    while (file_byte < file_len and file_byte < data.len) : (file_byte += 1) {
-                        const global_pos = file_byte + total_file_len_so_far;
-
-                        if (global_pos == global_start) try file.seekTo(file_byte);
-
-                        if (global_pos >= global_start and global_pos < global_end) {
-                            const value = data[file_byte];
-                            std.debug.warn("Write file #{} file_pos={}  file_byte={} value={} global_start={} global_end={}\n", .{ i, file.getPos(), file_byte, value, global_start, global_end });
-                            try file.outStream().writeByte(value);
-                        }
-                    }
-
-                    total_file_len_so_far += file_len;
-
-                    try file.seekTo(0);
-                }
+                try self.writeBlockToDisk(file_offset, data);
 
                 utils.bitArraySet(self.have_blocks_bitfield, block);
 
@@ -574,6 +572,7 @@ test "commitFileOffset" {
 
         const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
         defer std.testing.allocator.free(disk_data);
+
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], disk_data[0 .. 2 * block_len]));
 
         testing.expectEqual(true, Pieces.isPieceHashValid(0, disk_data[0..piece_len], hashes[0..]));
@@ -682,8 +681,9 @@ test "commitFileOffset multifiles" {
         std.testing.expectEqual(true, std.mem.eql(u8, data[block_len - 1 .. block_len], pieces.file_buffer[block_len - 1 .. block_len]));
 
         const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
-        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_0);
+
+        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_1);
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
