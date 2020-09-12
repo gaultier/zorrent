@@ -18,7 +18,7 @@ Experimental Zig torrent library and client example program.
   * [x] Check pieces SHA1 hashes
   * [x] Re-fetch piece if hash fails
   * [x] Request pipelining
-  * [ ] Support torrent with multiple files
+  * [x] Support torrent with multiple files
   * [ ] Upload files (serve)
   * [x] Save want state to continue downloading a file after a restart
   * [x] Check hashes in parallel
