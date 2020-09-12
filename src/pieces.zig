@@ -232,15 +232,19 @@ pub const Pieces = struct {
 
         for (self.files) |file, i| {
             const file_size = self.file_sizes[i];
+            if (accumulated_file_size > file_offset + data_len) break;
+
             const start = std.math.max(accumulated_file_size, file_offset);
             const end = std.math.min(accumulated_file_size + file_size, file_offset + data_len);
             const overlap_len = end - start;
             std.debug.warn("#{} file_size={} file_offset={} accumulated_file_size={} start={} end={} overlap_len={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, overlap_len, data_len, file.getPos() });
             if (overlap_len > 0) {
-                try file.seekTo(if (accumulated_file_size > file_offset) accumulated_file_size - file_offset else 0);
+                try file.seekTo(if (file_offset > accumulated_file_size) file_offset - accumulated_file_size else 0);
+
+                std.debug.warn("#{} WRITE file_size={} file_offset={} accumulated_file_size={} start={} end={} overlap_len={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, overlap_len, data_len, file.getPos() });
                 try file.writeAll(self.file_buffer[start..end]);
                 try file.seekTo(0);
-            } else break;
+            }
             accumulated_file_size += file_size;
         }
     }
@@ -683,7 +687,7 @@ test "commitFileOffset multifiles" {
         defer std.testing.allocator.free(disk_data_0);
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
 
-        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, 1);
+        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_1);
         std.testing.expectEqual(data[block_len - 1], disk_data_1[0]);
     }
