@@ -141,7 +141,7 @@ pub const Pieces = struct {
             try std.os.ftruncate(file.handle, len);
 
             if (file_exists) {
-                const read = try file.inStream().readAll(file_buffer.items[total_file_len_so_far .. total_file_len_so_far + len]);
+                const read = try file.readAll(file_buffer.items[total_file_len_so_far .. total_file_len_so_far + len]);
                 std.debug.assert(read == len);
             }
 
@@ -553,7 +553,7 @@ test "commitFileOffset" {
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], pieces.file_buffer[0..block_len]));
 
-        const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
+        const disk_data = try pieces.files[0].readAllAlloc(std.testing.allocator, total_len);
         defer std.testing.allocator.free(disk_data);
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..block_len], disk_data[0..block_len]));
@@ -578,7 +578,7 @@ test "commitFileOffset" {
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], pieces.file_buffer[0 .. 2 * block_len]));
 
-        const disk_data = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, total_len);
+        const disk_data = try pieces.files[0].readAllAlloc(std.testing.allocator, total_len);
         defer std.testing.allocator.free(disk_data);
 
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. 2 * block_len], disk_data[0 .. 2 * block_len]));
@@ -689,12 +689,12 @@ test "commitFileOffset multifiles" {
         std.testing.expectEqual(true, std.mem.eql(u8, data[block_len - 1 .. block_len], pieces.file_buffer[block_len - 1 .. block_len]));
 
         try pieces.files[0].seekTo(0);
-        const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_0 = try pieces.files[0].readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_0);
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
 
         try pieces.files[1].seekTo(0);
-        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_1 = try pieces.files[1].readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_1);
         std.testing.expectEqual(data[block_len - 1], disk_data_1[0]);
     }
@@ -720,18 +720,18 @@ test "commitFileOffset multifiles" {
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..piece_len], pieces.file_buffer[0..piece_len]));
 
         try pieces.files[0].seekTo(0);
-        const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_0 = try pieces.files[0].readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_0);
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
 
         try pieces.files[1].seekTo(0);
-        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_1 = try pieces.files[1].readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_1);
 
         std.testing.expectEqualStrings(data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0 .. block_len - 1]);
 
         try pieces.files[2].seekTo(0);
-        const disk_data_2 = try pieces.files[2].inStream().readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
+        const disk_data_2 = try pieces.files[2].readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
         defer std.testing.allocator.free(disk_data_2);
         std.testing.expectEqualStrings(data[2 * (block_len - 1) .. piece_len], disk_data_2[0..2]);
 
@@ -761,18 +761,18 @@ test "commitFileOffset multifiles" {
         std.testing.expectEqual(true, std.mem.eql(u8, data[0..piece_len], pieces.file_buffer[0..piece_len]));
 
         try pieces.files[0].seekTo(0);
-        const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_0 = try pieces.files[0].readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_0);
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
 
         try pieces.files[1].seekTo(0);
-        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        const disk_data_1 = try pieces.files[1].readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_1);
 
         std.testing.expectEqualStrings(data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0 .. block_len - 1]);
 
         try pieces.files[2].seekTo(0);
-        const disk_data_2 = try pieces.files[2].inStream().readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
+        const disk_data_2 = try pieces.files[2].readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
         defer std.testing.allocator.free(disk_data_2);
         std.testing.expectEqualStrings(data[2 * (block_len - 1) .. 2 * (block_len - 1) + block_len], disk_data_2[0..block_len]);
 
