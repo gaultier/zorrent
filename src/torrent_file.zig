@@ -11,7 +11,7 @@ pub const TorrentFile = struct {
     total_len: usize,
     hash_info: [20]u8,
     downloadedBytesCount: usize,
-    uploadedBytesCount: usize,
+    uploaded_bytes_count: usize,
     leftBytesCount: usize,
     pieces: []const u8,
     piece_len: usize,
@@ -156,7 +156,7 @@ pub const TorrentFile = struct {
             .announce_urls = owned_announce_urls.toOwnedSlice(),
             .total_len = @intCast(usize, total_len),
             .hash_info = hash,
-            .uploadedBytesCount = 0,
+            .uploaded_bytes_count = 0,
             .downloadedBytesCount = 0,
             .leftBytesCount = @intCast(usize, total_len),
             .piece_len = @intCast(usize, piece_len),
@@ -187,7 +187,7 @@ pub const TorrentFile = struct {
         const port: u16 = 6881; // TODO: listen on that port
         try std.fmt.format(query.writer(), "&port={}", .{port});
 
-        try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploadedBytesCount});
+        try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploaded_bytes_count});
 
         const downloaded = 0;
         try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloadedBytesCount});
@@ -418,6 +418,7 @@ test "parse real torrent with multiple files" {
     std.testing.expectEqual(@as(usize, 8621319 + 46758 + 2357), torrent_file.total_len);
     std.testing.expectEqual(@as(usize, 3), torrent_file.file_sizes.len);
     std.testing.expectEqual(@as(usize, 4), torrent_file.file_paths.len);
+    std.testing.expectEqual(@as(usize, 0), torrent_file.uploaded_bytes_count);
 
     defer torrent_file.deinit();
 }
