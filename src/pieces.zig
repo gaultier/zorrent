@@ -227,23 +227,21 @@ pub const Pieces = struct {
         }
     }
 
-    fn writeBlockToDisk(self: *Pieces, file_offset: usize, data: []const u8) !void {
-        var remaining: usize = data.len;
-        var current_file_offset = file_offset;
+    fn writeBlockToDisk(self: *Pieces, file_offset: usize, data_len: usize) !void {
         var accumulated_file_size: usize = 0;
 
-        var file_i: ?usize = null;
         for (self.files) |file, i| {
             const file_size = self.file_sizes[i];
-            if (current_file_offset >= accumulated_file_size) {
-                file_i = i;
-                break;
+            const start = std.math.max(accumulated_file_size, file_offset);
+            const end = std.math.min(accumulated_file_size + file_size, file_offset + data_len);
+            const overlap_len = end - start;
+            if (overlap_len > 0) {
+                try file.seekTo(if (accumulated_file_size > file_offset) accumulated_file_size - file_offset else 0);
+                try file.writeAll(self.file_buffer[start..end]);
+                try file.seekTo(0);
             }
             accumulated_file_size += file_size;
         }
-        std.debug.assert(file_i != null);
-
-        var file = self.files[file_i.?];
     }
 
     pub fn commitFileOffset(self: *Pieces, file_offset: usize, data: []const u8, hashes: []const u8) !void {
@@ -264,7 +262,7 @@ pub const Pieces = struct {
                 const global_end = global_start + data.len;
                 std.mem.copy(u8, self.file_buffer[global_start..global_end], data);
 
-                try self.writeBlockToDisk(file_offset, data);
+                try self.writeBlockToDisk(file_offset, data.len);
 
                 utils.bitArraySet(self.have_blocks_bitfield, block);
 
