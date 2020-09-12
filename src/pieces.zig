@@ -254,9 +254,11 @@ pub const Pieces = struct {
                     while (file_byte < file_len and file_byte < data.len) : (file_byte += 1) {
                         const global_pos = file_byte + total_file_len_so_far;
 
+                        if (global_pos == global_start) try file.seekTo(file_byte);
+
                         if (global_pos >= global_start and global_pos < global_end) {
                             const value = data[file_byte];
-                            // std.debug.warn("Write file #{} file_pos={}  file_byte={} value={} global_start={} global_end={}\n", .{ i, file.getPos(), file_byte, value, global_start, global_end });
+                            std.debug.warn("Write file #{} file_pos={}  file_byte={} value={} global_start={} global_end={}\n", .{ i, file.getPos(), file_byte, value, global_start, global_end });
                             try file.outStream().writeByte(value);
                         }
                     }
