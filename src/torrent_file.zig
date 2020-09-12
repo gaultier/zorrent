@@ -10,9 +10,9 @@ pub const TorrentFile = struct {
     announce_urls: [][]const u8,
     total_len: usize,
     hash_info: [20]u8,
-    downloadedBytesCount: usize,
+    downloaded_bytes_count: usize,
     uploaded_bytes_count: usize,
-    leftBytesCount: usize,
+    left_bytes_count: usize,
     pieces: []const u8,
     piece_len: usize,
     file_paths: [][]const u8,
@@ -157,8 +157,8 @@ pub const TorrentFile = struct {
             .total_len = @intCast(usize, total_len),
             .hash_info = hash,
             .uploaded_bytes_count = 0,
-            .downloadedBytesCount = 0,
-            .leftBytesCount = @intCast(usize, total_len),
+            .downloaded_bytes_count = 0,
+            .left_bytes_count = @intCast(usize, total_len),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
             .file_paths = file_paths.toOwnedSlice(),
@@ -190,9 +190,9 @@ pub const TorrentFile = struct {
         try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploaded_bytes_count});
 
         const downloaded = 0;
-        try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloadedBytesCount});
+        try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloaded_bytes_count});
 
-        try std.fmt.format(query.writer(), "&left={}", .{self.leftBytesCount});
+        try std.fmt.format(query.writer(), "&left={}", .{self.left_bytes_count});
 
         try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
 
