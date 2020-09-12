@@ -623,21 +623,21 @@ test "recover state from file" {
 }
 
 test "commitFileOffset multifiles" {
+    std.os.unlink("first.bin") catch {};
+    std.os.unlink("second.bin") catch {};
+    std.os.unlink("third.bin") catch {};
     std.os.unlink("commitFileOffsetMulti.bin") catch {};
-    std.os.unlink("bar.bin") catch {};
-    std.os.unlink("baz.bin") catch {};
-    std.os.unlink("dir.bin") catch {};
+    defer std.os.unlink("first.bin") catch {};
+    defer std.os.unlink("second.bin") catch {};
+    defer std.os.unlink("third.bin") catch {};
     defer std.os.unlink("commitFileOffsetMulti.bin") catch {};
-    defer std.os.unlink("bar") catch {};
-    defer std.os.unlink("baz") catch {};
-    defer std.os.unlink("dir") catch {};
 
     const total_len = 18 * block_len + 5;
     const piece_len = 2 * block_len;
-    const file_path_0 = "dir.bin";
-    const file_path_1 = "commitFileOffsetMulti.bin";
-    const file_path_2 = "bar.bin";
-    const file_path_3 = "baz.bin";
+    const file_path_0 = "commitFileOffsetMulti.bin";
+    const file_path_1 = "first.bin";
+    const file_path_2 = "second.bin";
+    const file_path_3 = "third.bin";
     const file_paths = [4][]const u8{ file_path_0[0..], file_path_1[0..], file_path_2[0..], file_path_3[0..] };
     const hash = [20]u8{ 0xF1, 0x20, 0xBA, 0xD5, 0xAA, 0x2F, 0xC4, 0x86, 0x34, 0x9B, 0xEF, 0xED, 0x84, 0x4F, 0x37, 0x4C, 0x57, 0xEB, 0xE7, 0xD8 };
     const hash_rest = [_]u8{0} ** (20 * 9);
@@ -680,12 +680,11 @@ test "commitFileOffset multifiles" {
 
         const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_0);
-
-        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
-        defer std.testing.allocator.free(disk_data_1);
-
         std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
-        std.testing.expectEqual(true, std.mem.eql(u8, data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0..]));
+
+        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, 1);
+        defer std.testing.allocator.free(disk_data_1);
+        std.testing.expectEqual(data[block_len - 1], disk_data_1[0]);
     }
 
     // We now have the full piece
