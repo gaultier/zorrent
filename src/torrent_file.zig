@@ -418,7 +418,6 @@ test "parse real torrent with multiple files" {
     std.testing.expectEqual(@as(usize, 8621319 + 46758 + 2357), torrent_file.total_len);
     std.testing.expectEqual(@as(usize, 3), torrent_file.file_sizes.len);
     std.testing.expectEqual(@as(usize, 4), torrent_file.file_paths.len);
-    std.testing.expectEqual(@as(usize, 0), torrent_file.uploaded_bytes_count);
 
     defer torrent_file.deinit();
 }
