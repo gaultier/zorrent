@@ -236,7 +236,7 @@ pub const Pieces = struct {
 
             const start = std.math.max(accumulated_file_size, file_offset);
             const end = std.math.min(accumulated_file_size + file_size, file_offset + data_len);
-            std.debug.warn("\n#{} file_size={} file_offset={} accumulated_file_size={} start={} end={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, data_len, file.getPos() });
+            // std.debug.warn("\n#{} file_size={} file_offset={} accumulated_file_size={} start={} end={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, data_len, file.getPos() });
             if (end <= start) {
                 accumulated_file_size += file_size;
                 continue;
@@ -246,7 +246,7 @@ pub const Pieces = struct {
             if (overlap_len > 0) {
                 try file.seekTo(if (file_offset > accumulated_file_size) file_offset - accumulated_file_size else 0);
 
-                std.debug.warn("\n#{} WRITE file_size={} file_offset={} accumulated_file_size={} start={} end={} overlap_len={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, overlap_len, data_len, file.getPos() });
+                // std.debug.warn("\n#{} WRITE file_size={} file_offset={} accumulated_file_size={} start={} end={} overlap_len={} data_len={} pos={}\n", .{ i, file_size, file_offset, accumulated_file_size, start, end, overlap_len, data_len, file.getPos() });
                 try file.writeAll(self.file_buffer[start..end]);
                 try file.seekTo(0);
             }
@@ -728,11 +728,7 @@ test "commitFileOffset multifiles" {
         const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
         defer std.testing.allocator.free(disk_data_1);
 
-        for (data[block_len - 1 .. 2 * (block_len - 1)]) |d, i| {
-            std.debug.warn("\ni={} d={} dd={}", .{ i, d, disk_data_1[i] });
-            std.testing.expectEqual(d, disk_data_1[i]);
-        }
-        // std.testing.expectEqual(data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0 .. block_len - 1]);
+        std.testing.expectEqualStrings(data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0 .. block_len - 1]);
 
         testing.expectEqual(true, Pieces.isPieceHashValid(0, pieces.file_buffer[0..piece_len], hashes[0..]));
         testing.expectEqual(false, Pieces.isPieceHashValid(1, pieces.file_buffer[piece_len .. 2 * piece_len], hashes[0..]));
