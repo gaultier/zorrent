@@ -664,7 +664,7 @@ test "commitFileOffset multifiles" {
     remote_have_blocks_bitfield.items[0] = 0b0000_0001;
     testing.expectEqual(@as(?usize, 0 * block_len), pieces.tryAcquireFileOffset(remote_have_blocks_bitfield.items[0..]));
 
-    var data: [piece_len]u8 = undefined;
+    var data: [2 * piece_len]u8 = undefined;
     for (data) |*v, i| v.* = @intCast(u8, i % 8);
 
     // We only have one block, not the whole first piece, so no hash check can be done
@@ -717,7 +717,7 @@ test "commitFileOffset multifiles" {
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
         testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
 
-        std.testing.expectEqual(true, std.mem.eql(u8, data[0..], pieces.file_buffer[0..piece_len]));
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0..piece_len], pieces.file_buffer[0..piece_len]));
 
         try pieces.files[0].seekTo(0);
         const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
@@ -734,6 +734,47 @@ test "commitFileOffset multifiles" {
         const disk_data_2 = try pieces.files[2].inStream().readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
         defer std.testing.allocator.free(disk_data_2);
         std.testing.expectEqualStrings(data[2 * (block_len - 1) .. piece_len], disk_data_2[0..2]);
+
+        testing.expectEqual(true, Pieces.isPieceHashValid(0, pieces.file_buffer[0..piece_len], hashes[0..]));
+        testing.expectEqual(false, Pieces.isPieceHashValid(1, pieces.file_buffer[piece_len .. 2 * piece_len], hashes[0..]));
+    }
+
+    // Block #3
+    {
+        try pieces.commitFileOffset(2 * block_len, data[block_len..], hashes[0..]);
+
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 0));
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 1));
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.have_blocks_bitfield, 2));
+
+        testing.expectEqual(true, utils.bitArrayIsSet(pieces.pieces_valid, 0));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 1));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 2));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 3));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 4));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 5));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 6));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 7));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 8));
+        testing.expectEqual(false, utils.bitArrayIsSet(pieces.pieces_valid, 9));
+
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0..piece_len], pieces.file_buffer[0..piece_len]));
+
+        try pieces.files[0].seekTo(0);
+        const disk_data_0 = try pieces.files[0].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        defer std.testing.allocator.free(disk_data_0);
+        std.testing.expectEqual(true, std.mem.eql(u8, data[0 .. block_len - 1], disk_data_0[0..]));
+
+        try pieces.files[1].seekTo(0);
+        const disk_data_1 = try pieces.files[1].inStream().readAllAlloc(std.testing.allocator, block_len - 1);
+        defer std.testing.allocator.free(disk_data_1);
+
+        std.testing.expectEqualStrings(data[block_len - 1 .. 2 * (block_len - 1)], disk_data_1[0 .. block_len - 1]);
+
+        try pieces.files[2].seekTo(0);
+        const disk_data_2 = try pieces.files[2].inStream().readAllAlloc(std.testing.allocator, total_len - 2 * (block_len - 1));
+        defer std.testing.allocator.free(disk_data_2);
+        std.testing.expectEqualStrings(data[2 * (block_len - 1) .. 2 * (block_len - 1) + block_len], disk_data_2[0..block_len]);
 
         testing.expectEqual(true, Pieces.isPieceHashValid(0, pieces.file_buffer[0..piece_len], hashes[0..]));
         testing.expectEqual(false, Pieces.isPieceHashValid(1, pieces.file_buffer[piece_len .. 2 * piece_len], hashes[0..]));
