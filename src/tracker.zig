@@ -246,6 +246,20 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
     return size * nmemb;
 }
 
+fn sendTrackerStatusUpdate(url: []const u8, info_hash: [20]u8, uploaded: usize, downloaded: usize, left: usize, allocator: *std.mem.Allocator) !bencode.ValueTree {
+    const query = Query{
+        .info_hash = info_hash,
+        .peer_id = peer_id,
+        .port = 6881,
+        .uploaded = uploaded,
+        .downloaded = downloaded,
+        .left = left,
+        .event = Event.Completed,
+    };
+
+    return try queryAnnounceUrl(url, query, allocator);
+}
+
 pub fn getPeers(announce_urls: []const []const u8, info_hash: [20]u8, total_len: usize, allocator: *std.mem.Allocator) ![]Peer {
     var peers: []Peer = undefined;
 
