@@ -1,6 +1,8 @@
 # zorrent
 Experimental Zig torrent library and client example program.
 
+Requires the lastest (HEAD) zig version.
+
     $ git pull --recurse-submodules https://github.com/gaultier/zorrent.git
     # Requires libcurl
     $ zig build
