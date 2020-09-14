@@ -2,7 +2,9 @@ const c = @cImport(@cInclude("curl/curl.h"));
 const std = @import("std");
 const bencode = @import("zig-bencode");
 
-const Peer = @import("peer.zig").Peer;
+const peer_mod = @import("peer.zig");
+const Peer = peer_mod.Peer;
+const peer_id = peer_mod.peer_id;
 
 pub const Event = enum {
     Started,
@@ -28,7 +30,7 @@ pub const Query = struct {
     event: Event,
 };
 
-pub fn getPeers(announce_urls: []const []const u8, query: Query, allocator: *std.mem.Allocator) ![]Peer {
+fn fetchPeersFromAllTrackers(announce_urls: []const []const u8, query: Query, allocator: *std.mem.Allocator) ![]Peer {
     var peers = std.ArrayList(Peer).init(allocator);
     defer peers.deinit();
 
@@ -215,14 +217,11 @@ fn buildAnnounceUrl(url: []const u8, query: Query, allocator: *std.mem.Allocator
         try std.fmt.format(query_string.writer(), "%{X:0<2}", .{byte});
     }
 
-    // const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
-
     try query_string.appendSlice("&peer_id=");
     for (query.peer_id) |byte| {
         try std.fmt.format(query_string.writer(), "%{X:0<2}", .{byte});
     }
 
-    // const port: u16 = 6881; // TODO: listen on that port
     try std.fmt.format(query_string.writer(), "&port={}", .{query.port});
 
     try std.fmt.format(query_string.writer(), "&uploaded={}", .{query.uploaded});
@@ -245,4 +244,26 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
         std.process.exit(1);
     };
     return size * nmemb;
+}
+
+pub fn getPeers(announce_urls: []const []const u8, info_hash: [20]u8, total_len: usize, allocator: *std.mem.Allocator) ![]Peer {
+    var peers: []Peer = undefined;
+
+    const query = Query{
+        .info_hash = info_hash,
+        .peer_id = peer_id,
+        .port = 6881,
+        .uploaded = 0,
+        .downloaded = 0,
+        .left = total_len,
+        .event = Event.Started,
+    };
+
+    while (true) {
+        peers = try fetchPeersFromAllTrackers(announce_urls, query, allocator);
+        if (peers.len > 0) break;
+
+        std.time.sleep(3 * std.time.ns_per_s);
+    }
+    return peers;
 }

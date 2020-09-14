@@ -46,25 +46,7 @@ pub fn main() anyerror!void {
     var torrent_file = try zorrent.TorrentFile.parse(torrent_file_path, torrent_file_content, allocator);
     defer torrent_file.deinit();
 
-    var peers: []zorrent.Peer = undefined;
-
-    const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
-    const query = zorrent.tracker.Query{
-        .info_hash = torrent_file.info_hash,
-        .peer_id = peer_id,
-        .port = 6881,
-        .uploaded = 0,
-        .downloaded = 0,
-        .left = torrent_file.total_len,
-        .event = zorrent.tracker.Event.Started,
-    };
-
-    while (true) {
-        peers = try zorrent.tracker.getPeers(torrent_file.announce_urls, query, allocator);
-        if (peers.len > 0) break;
-
-        std.time.sleep(3 * std.time.ns_per_s);
-    }
+    var peers = try zorrent.tracker.getPeers(torrent_file.announce_urls, torrent_file.info_hash, torrent_file.total_len, allocator);
     defer allocator.free(peers);
 
     var frames = std.ArrayList(@Frame(zorrent.Peer.handle)).init(allocator);

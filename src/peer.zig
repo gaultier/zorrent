@@ -15,6 +15,9 @@ const MessageRequest = struct { index: u32, begin: u32, length: u32 };
 const MessagePiece = struct { index: u32, begin: u32, data: []const u8 };
 const MessageCancel = struct { index: u32, begin: u32, length: u32 };
 
+// TODO: random?
+pub const peer_id = [20]u8{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+
 pub const Message = union(MessageId) {
     Choke: void,
     Unchoke: void,
@@ -97,7 +100,6 @@ pub const Peer = struct {
     fn sendPeerId(self: *Peer) !void {
         std.debug.assert(self.socket != null);
 
-        const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
         try self.socket.?.writeAll(peer_id[0..]);
     }
 
