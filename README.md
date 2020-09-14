@@ -26,6 +26,7 @@ Requires the lastest (HEAD) zig version.
   * [x] Check hashes in parallel
   * [ ] Get peers from trackers in parallel
   * [ ] Pick up new peers while downloading from other peers
+  * [ ] Notify tracker of events
   * [x] Retry connecting to peers when disconnected
 - [x] Multi-tracker (BEP-0012)
 - [x] Compact peer list from tracker (BEP-0023)
