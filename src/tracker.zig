@@ -246,6 +246,7 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
     return size * nmemb;
 }
 
+// TODO: find where to call this in the lifecycle
 fn sendTrackerStatusUpdate(url: []const u8, info_hash: [20]u8, uploaded: usize, downloaded: usize, left: usize, allocator: *std.mem.Allocator) !bencode.ValueTree {
     const query = Query{
         .info_hash = info_hash,
