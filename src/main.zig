@@ -31,8 +31,14 @@ pub fn run(torrent_file_path: []const u8, allocator: *std.mem.Allocator) !void {
     const pieces_len: usize = utils.divCeil(usize, file.total_len, file.piece_len);
     defer pieces.deinit();
 
+    var trackers = std.ArrayList(tracker.Tracker).init(allocator);
+    defer trackers.deinit();
+    for (file.announce_urls) |url| {
+        trackers.addOneAssumeCapacity().* = tracker.Tracker{ .url = url, .last_updated_unix_timestamp = std.atomic.Int(i64).init(std.time.timestamp()) };
+    }
+
     for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(file, pieces.file_buffer, &pieces);
+        frames.addOneAssumeCapacity().* = async peer.handle(file, pieces.file_buffer, &pieces, trackers.items);
     }
 
     for (frames.items) |*frame, i| {

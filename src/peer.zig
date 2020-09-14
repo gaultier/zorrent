@@ -7,6 +7,7 @@ const pieces_mod = @import("pieces.zig");
 const Pieces = pieces_mod.Pieces;
 
 const utils = @import("utils.zig");
+const tracker = @import("tracker.zig");
 
 const handshake_len: usize = 1 + 19 + 8 + 20 + 20;
 const block_len = pieces_mod.block_len;
@@ -251,7 +252,7 @@ pub const Peer = struct {
         }
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []u8, pieces: *Pieces) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []u8, pieces: *Pieces, tracker: []tracker.Tracker) !void {
         try self.retryConnect(pieces);
         try self.waitForHandshake(torrent_file, pieces);
         try self.sendInterested();
@@ -276,6 +277,16 @@ pub const Peer = struct {
         }
 
         while (true) {
+            tracker.Tracker.sendStatusUpdates(trackers, tracker.Query{
+                .info_hash = torrent_file.info_hash,
+                .downloaded = pieces.valid_piece_count.get() * pieces.piece_len,
+                .uploaded = 0,
+                .left = torrent_file.total_len - pieces.valid_piece_count.get() * pieces.piece_len,
+                .port = 6881,
+                .event = tracker.Event.StatusUpdate,
+                .peer_id = peer_id,
+            });
+
             const message = try self.parseMessage(pieces);
             if (message) |msg| {
                 pieces.displayStats();

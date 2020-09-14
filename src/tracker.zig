@@ -30,6 +30,25 @@ pub const Query = struct {
     event: Event,
 };
 
+pub const Tracker = struct {
+    url: []const u8,
+    last_updated_unix_timestamp: std.atomic.Int(i64),
+    // TODO: find where to call this in the lifecycle
+    fn sendStatusUpdate(self: *Tracker, query: Query, allocator: *std.mem.Allocator) !void {
+        const res = try queryAnnounceUrl(self.url, query, allocator);
+        self.last_updated_unix_timestamp.set(std.time.timestamp());
+    }
+
+    fn sendStatusUpdates(trackers: []*Tracker, query: Query) !void {
+        for (trackers) |*t| {
+            // Each minute or so
+            if (t.last_updated_unix_timestamp.get() + 60 <= std.time.timestamp()) {
+                try t.sendStatusUpdate();
+            }
+        }
+    }
+};
+
 fn fetchPeersFromAllTrackers(announce_urls: []const []const u8, query: Query, allocator: *std.mem.Allocator) ![]Peer {
     var peers = std.ArrayList(Peer).init(allocator);
     defer peers.deinit();
@@ -244,21 +263,6 @@ fn writeCallback(p_contents: *c_void, size: usize, nmemb: usize, p_user_data: *s
         std.process.exit(1);
     };
     return size * nmemb;
-}
-
-// TODO: find where to call this in the lifecycle
-fn sendTrackerStatusUpdate(url: []const u8, info_hash: [20]u8, uploaded: usize, downloaded: usize, left: usize, allocator: *std.mem.Allocator) !bencode.ValueTree {
-    const query = Query{
-        .info_hash = info_hash,
-        .peer_id = peer_id,
-        .port = 6881,
-        .uploaded = uploaded,
-        .downloaded = downloaded,
-        .left = left,
-        .event = Event.Completed,
-    };
-
-    return try queryAnnounceUrl(url, query, allocator);
 }
 
 pub fn getPeers(announce_urls: []const []const u8, info_hash: [20]u8, total_len: usize, allocator: *std.mem.Allocator) ![]Peer {
