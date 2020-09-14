@@ -40,31 +40,5 @@ pub fn main() anyerror!void {
         return;
     };
 
-    var torrent_file_content = try std.fs.cwd().readFileAlloc(allocator, torrent_file_path, 10_000_000);
-    defer allocator.free(torrent_file_content);
-
-    var torrent_file = try zorrent.TorrentFile.parse(torrent_file_path, torrent_file_content, allocator);
-    defer torrent_file.deinit();
-
-    var peers = try zorrent.tracker.getPeers(torrent_file.announce_urls, torrent_file.info_hash, torrent_file.total_len, allocator);
-    defer allocator.free(peers);
-
-    var frames = std.ArrayList(@Frame(zorrent.Peer.handle)).init(allocator);
-    defer frames.deinit();
-    try frames.ensureCapacity(peers.len);
-
-    var pieces = try zorrent.Pieces.init(torrent_file.total_len, torrent_file.piece_len, torrent_file.file_paths, torrent_file.pieces[0..], torrent_file.file_sizes, allocator);
-    const pieces_len: usize = zorrent.utils.divCeil(usize, torrent_file.total_len, torrent_file.piece_len);
-    defer pieces.deinit();
-
-    for (peers) |*peer| {
-        frames.addOneAssumeCapacity().* = async peer.handle(torrent_file, pieces.file_buffer, &pieces);
-    }
-
-    for (frames.items) |*frame, i| {
-        _ = await frame catch |err| {
-            const peer = peers[i];
-            std.log.err("{}\t{}", .{ peer.address, err });
-        };
-    }
+    try zorrent.run(torrent_file_path, allocator);
 }

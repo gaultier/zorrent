@@ -12,3 +12,33 @@ pub const TorrentFile = torrent_file.TorrentFile;
 pub const Peer = peer_mod.Peer;
 
 pub const Pieces = pieces_mod.Pieces;
+
+pub fn run(torrent_file_path: []const u8, allocator: *std.mem.Allocator) !void {
+    var torrent_file_content = try std.fs.cwd().readFileAlloc(allocator, torrent_file_path, 10_000_000);
+    defer allocator.free(torrent_file_content);
+
+    var file = try TorrentFile.parse(torrent_file_path, torrent_file_content, allocator);
+    defer file.deinit();
+
+    var peers = try tracker.getPeers(file.announce_urls, file.info_hash, file.total_len, allocator);
+    defer allocator.free(peers);
+
+    var frames = std.ArrayList(@Frame(Peer.handle)).init(allocator);
+    defer frames.deinit();
+    try frames.ensureCapacity(peers.len);
+
+    var pieces = try Pieces.init(file.total_len, file.piece_len, file.file_paths, file.pieces[0..], file.file_sizes, allocator);
+    const pieces_len: usize = utils.divCeil(usize, file.total_len, file.piece_len);
+    defer pieces.deinit();
+
+    for (peers) |*peer| {
+        frames.addOneAssumeCapacity().* = async peer.handle(file, pieces.file_buffer, &pieces);
+    }
+
+    for (frames.items) |*frame, i| {
+        _ = await frame catch |err| {
+            const peer = peers[i];
+            std.log.err("{}\t{}", .{ peer.address, err });
+        };
+    }
+}
