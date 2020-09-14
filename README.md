@@ -33,4 +33,5 @@ Requires the lastest (HEAD) zig version.
 - [ ] Fast extension (BEP-0006)
 - [ ] UDP
 - [ ] Extension messages
+- [ ] Local Service Discovery (BEP-0014)
 
