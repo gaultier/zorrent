@@ -5,14 +5,13 @@ const bencode = @import("zig-bencode");
 const peer_mod = @import("peer.zig");
 const Peer = peer_mod.Peer;
 
+const tracker = @import("tracker.zig");
+
 pub const TorrentFile = struct {
     allocator: *std.mem.Allocator,
     announce_urls: [][]const u8,
     total_len: usize,
     hash_info: [20]u8,
-    downloaded_bytes_count: usize,
-    uploaded_bytes_count: usize,
-    left_bytes_count: usize,
     pieces: []const u8,
     piece_len: usize,
     file_paths: [][]const u8,
@@ -156,9 +155,6 @@ pub const TorrentFile = struct {
             .announce_urls = owned_announce_urls.toOwnedSlice(),
             .total_len = @intCast(usize, total_len),
             .hash_info = hash,
-            .uploaded_bytes_count = 0,
-            .downloaded_bytes_count = 0,
-            .left_bytes_count = @intCast(usize, total_len),
             .piece_len = @intCast(usize, piece_len),
             .pieces = owned_pieces.toOwnedSlice(),
             .file_paths = file_paths.toOwnedSlice(),
@@ -166,44 +162,43 @@ pub const TorrentFile = struct {
         };
     }
 
-    fn buildAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) ![]const u8 {
-        var query = std.ArrayList(u8).init(allocator);
-        defer query.deinit();
+    fn buildAnnounceUrl(self: TorrentFile, url: []const u8, query: tracker.Query, allocator: *std.mem.Allocator) ![]const u8 {
+        var query_string = std.ArrayList(u8).init(allocator);
+        defer query_string.deinit();
 
-        try query.appendSlice(url);
-        try query.appendSlice("?info_hash=");
+        try query_string.appendSlice(url);
+        try query_string.appendSlice("?info_hash=");
 
         for (self.hash_info) |byte| {
-            try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
+            try std.fmt.format(query_string.writer(), "%{X:0<2}", .{byte});
         }
 
-        const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
+        // const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
 
-        try query.appendSlice("&peer_id=");
-        for (peer_id) |byte| {
-            try std.fmt.format(query.writer(), "%{X:0<2}", .{byte});
+        try query_string.appendSlice("&peer_id=");
+        for (query.peer_id) |byte| {
+            try std.fmt.format(query_string.writer(), "%{X:0<2}", .{byte});
         }
 
-        const port: u16 = 6881; // TODO: listen on that port
-        try std.fmt.format(query.writer(), "&port={}", .{port});
+        // const port: u16 = 6881; // TODO: listen on that port
+        try std.fmt.format(query_string.writer(), "&port={}", .{query.port});
 
-        try std.fmt.format(query.writer(), "&uploaded={}", .{self.uploaded_bytes_count});
+        try std.fmt.format(query_string.writer(), "&uploaded={}", .{query.uploaded});
 
-        const downloaded = 0;
-        try std.fmt.format(query.writer(), "&downloaded={}", .{self.downloaded_bytes_count});
+        try std.fmt.format(query_string.writer(), "&downloaded={}", .{query.downloaded});
 
-        try std.fmt.format(query.writer(), "&left={}", .{self.left_bytes_count});
+        try std.fmt.format(query_string.writer(), "&left={}", .{query.left});
 
-        try std.fmt.format(query.writer(), "&event={}", .{"started"}); // FIXME
+        try std.fmt.format(query_string.writer(), "&event={}", .{query.event.to_string()});
 
         // libcurl expects a null terminated string
-        try query.append(0);
+        try query_string.append(0);
 
-        return query.toOwnedSlice();
+        return query_string.toOwnedSlice();
     }
 
-    fn queryAnnounceUrl(self: TorrentFile, url: []const u8, allocator: *std.mem.Allocator) !bencode.ValueTree {
-        var queryUrl = try self.buildAnnounceUrl(url, allocator);
+    fn queryAnnounceUrl(self: TorrentFile, url: []const u8, query: tracker.Query, allocator: *std.mem.Allocator) !bencode.ValueTree {
+        var queryUrl = try self.buildAnnounceUrl(url, query, allocator);
         defer allocator.free(queryUrl);
 
         var curl_res: c.CURLcode = undefined;
@@ -287,9 +282,9 @@ pub const TorrentFile = struct {
         return true;
     }
 
-    fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), allocator: *std.mem.Allocator) !void {
+    fn addPeersFromTracker(self: TorrentFile, url: []const u8, peers: *std.ArrayList(Peer), query: tracker.Query, allocator: *std.mem.Allocator) !void {
         std.log.notice("Tracker {}: trying to contact...", .{url});
-        var tracker_response = try self.queryAnnounceUrl(url, allocator);
+        var tracker_response = try self.queryAnnounceUrl(url, query, allocator);
         std.log.notice("Tracker {} replied successfuly", .{url});
 
         var dict_field = tracker_response.root;
@@ -359,7 +354,7 @@ pub const TorrentFile = struct {
         }
     }
 
-    pub fn getPeers(self: TorrentFile, allocator: *std.mem.Allocator) ![]Peer {
+    pub fn getPeers(self: TorrentFile, query: tracker.Query, allocator: *std.mem.Allocator) ![]Peer {
         var peers = std.ArrayList(Peer).init(allocator);
         defer peers.deinit();
 
@@ -367,8 +362,9 @@ pub const TorrentFile = struct {
         try peers.append(try Peer.init(local_address, allocator)); // FIXME
 
         // TODO: contact in parallel each tracker, hard with libcurl?
+
         for (self.announce_urls) |url| {
-            self.addPeersFromTracker(url, &peers, allocator) catch |err| {
+            self.addPeersFromTracker(url, &peers, query, allocator) catch |err| {
                 std.log.warn("Tracker {}: {}", .{ url, err });
                 continue;
             };
