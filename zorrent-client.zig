@@ -50,7 +50,7 @@ pub fn main() anyerror!void {
 
     const peer_id: [20]u8 = .{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 };
     const query = zorrent.tracker.Query{
-        .info_hash = torrent_file.hash_info,
+        .info_hash = torrent_file.info_hash,
         .peer_id = peer_id,
         .port = 6881,
         .uploaded = 0,
@@ -60,7 +60,7 @@ pub fn main() anyerror!void {
     };
 
     while (true) {
-        peers = try torrent_file.getPeers(query, allocator);
+        peers = try zorrent.tracker.getPeers(torrent_file.announce_urls, query, allocator);
         if (peers.len > 0) break;
 
         std.time.sleep(3 * std.time.ns_per_s);

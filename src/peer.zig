@@ -61,12 +61,12 @@ pub const Peer = struct {
         self.recv_buffer.deinit();
     }
 
-    fn sendHandshake(self: *Peer, hash_info: [20]u8) !void {
+    fn sendHandshake(self: *Peer, info_hash: [20]u8) !void {
         std.debug.assert(self.socket != null);
 
         const handshake_payload = "\x13BitTorrent protocol\x00\x00\x00\x00\x00\x00\x00\x00";
         try self.socket.?.writeAll(handshake_payload);
-        try self.socket.?.writeAll(hash_info[0..]);
+        try self.socket.?.writeAll(info_hash[0..]);
         try self.sendPeerId();
     }
 
@@ -216,7 +216,7 @@ pub const Peer = struct {
         std.debug.assert(self.socket != null);
 
         std.log.notice("{}\tHandshaking", .{self.address});
-        try self.sendHandshake(torrent_file.hash_info);
+        try self.sendHandshake(torrent_file.info_hash);
 
         while (true) {
             const len: usize = try self.read(handshake_len);
