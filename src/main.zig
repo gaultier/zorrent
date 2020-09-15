@@ -33,6 +33,8 @@ pub fn run(torrent_file_path: []const u8, allocator: *std.mem.Allocator) !void {
 
     var trackers = std.ArrayList(tracker.Tracker).init(allocator);
     defer trackers.deinit();
+    try trackers.ensureCapacity(file.announce_urls.len);
+
     for (file.announce_urls) |url| {
         trackers.addOneAssumeCapacity().* = tracker.Tracker{ .url = url, .last_updated_unix_timestamp = std.atomic.Int(i64).init(std.time.timestamp()) };
     }

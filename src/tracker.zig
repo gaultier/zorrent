@@ -10,12 +10,14 @@ pub const Event = enum {
     Started,
     Completed,
     Stopped,
+    StatusUpdate,
 
     pub fn to_string(self: Event) []const u8 {
         return switch (self) {
             .Started => "started",
             .Completed => "completed",
             .Stopped => "stopped",
+            .StatusUpdate => "empty",
         };
     }
 };
@@ -39,11 +41,11 @@ pub const Tracker = struct {
         self.last_updated_unix_timestamp.set(std.time.timestamp());
     }
 
-    fn sendStatusUpdates(trackers: []*Tracker, query: Query) !void {
+    pub fn sendStatusUpdates(trackers: []Tracker, query: Query, allocator: *std.mem.Allocator) !void {
         for (trackers) |*t| {
             // Each minute or so
             if (t.last_updated_unix_timestamp.get() + 60 <= std.time.timestamp()) {
-                try t.sendStatusUpdate();
+                try t.sendStatusUpdate(query, allocator);
             }
         }
     }

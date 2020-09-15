@@ -252,7 +252,7 @@ pub const Peer = struct {
         }
     }
 
-    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []u8, pieces: *Pieces, tracker: []tracker.Tracker) !void {
+    pub fn handle(self: *Peer, torrent_file: TorrentFile, file_buffer: []u8, pieces: *Pieces, trackers: []tracker.Tracker) !void {
         try self.retryConnect(pieces);
         try self.waitForHandshake(torrent_file, pieces);
         try self.sendInterested();
@@ -285,7 +285,7 @@ pub const Peer = struct {
                 .port = 6881,
                 .event = tracker.Event.StatusUpdate,
                 .peer_id = peer_id,
-            });
+            }, self.allocator) catch {};
 
             const message = try self.parseMessage(pieces);
             if (message) |msg| {
