@@ -283,7 +283,7 @@ pub const Peer = struct {
                 .uploaded = 0,
                 .left = pieces.left(),
                 .port = 6881,
-                .event = tracker.Event.StatusUpdate,
+                .event = if (pieces.valid_piece_count.get() == pieces.pieces_count) tracker.Event.Completed else tracker.Event.StatusUpdate,
                 .peer_id = peer_id,
             }, self.allocator) catch {};
 
