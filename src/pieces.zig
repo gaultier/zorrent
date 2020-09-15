@@ -227,6 +227,18 @@ pub const Pieces = struct {
         }
     }
 
+    pub fn left(self: *Pieces) usize {
+        return self.total_len - self.downloaded();
+    }
+
+    pub fn lastPieceSize(self: Pieces) usize {
+        return self.total_len - ((self.pieces_count - 1) * self.piece_len);
+    }
+
+    pub fn downloaded(self: *Pieces) usize {
+        return (self.valid_piece_count.get() - 1) * self.piece_len + if (utils.bitArrayIsSet(self.pieces_valid, self.pieces_count - 1)) self.lastPieceSize() else self.piece_len;
+    }
+
     fn writeBlockToDisk(self: *Pieces, file_offset: usize, data_len: usize) !void {
         var accumulated_file_size: usize = 0;
 

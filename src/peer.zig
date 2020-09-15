@@ -279,9 +279,9 @@ pub const Peer = struct {
         while (true) {
             tracker.Tracker.sendStatusUpdates(trackers, tracker.Query{
                 .info_hash = torrent_file.info_hash,
-                .downloaded = pieces.valid_piece_count.get() * pieces.piece_len,
+                .downloaded = pieces.downloaded(),
                 .uploaded = 0,
-                .left = torrent_file.total_len - pieces.valid_piece_count.get() * pieces.piece_len,
+                .left = pieces.left(),
                 .port = 6881,
                 .event = tracker.Event.StatusUpdate,
                 .peer_id = peer_id,
