@@ -44,6 +44,7 @@ pub const Tracker = struct {
     pub fn sendStatusUpdates(trackers: []Tracker, query: Query, allocator: *std.mem.Allocator) !void {
         for (trackers) |*t| {
             // Each minute or so
+            // FIXME
             if (t.last_updated_unix_timestamp.get() + 60 <= std.time.timestamp()) {
                 try t.sendStatusUpdate(query, allocator);
             }

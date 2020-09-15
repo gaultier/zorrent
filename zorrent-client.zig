@@ -2,7 +2,7 @@ const zorrent = @import("zorrent");
 const std = @import("std");
 
 pub const io_mode = .evented;
-pub const log_level: std.log.Level = .err;
+pub const log_level: std.log.Level = .emerge;
 
 pub fn log(
     comptime level: std.log.Level,
