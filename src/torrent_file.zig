@@ -28,7 +28,7 @@ pub const TorrentFile = struct {
         var value = try bencode.ValueTree.parse(content, allocator);
         defer value.deinit();
 
-        if (!bencode.isObject(value.root)) return error.InvalidField;
+        if (!bencode.isMap(value.root)) return error.InvalidField;
 
         var owned_announce_urls = std.ArrayList([]const u8).init(allocator);
         errdefer {
@@ -36,7 +36,7 @@ pub const TorrentFile = struct {
             owned_announce_urls.deinit();
         }
 
-        if (bencode.mapLookup(&value.root.Object, "announce")) |field| {
+        if (bencode.mapLookup(value.root.Map, "announce")) |field| {
             if (!bencode.isString(field.*)) return error.InvalidField;
 
             const real_url = field.*.String;
@@ -46,7 +46,7 @@ pub const TorrentFile = struct {
             }
         }
 
-        if (bencode.mapLookup(&value.root.Object, "announce-list")) |field| {
+        if (bencode.mapLookup(value.root.Map, "announce-list")) |field| {
             if (!bencode.isArray(field.*)) return error.InvalidField;
 
             const urls = field.Array.items;
@@ -62,10 +62,10 @@ pub const TorrentFile = struct {
             }
         }
 
-        const field_info = bencode.mapLookup(&value.root.Object, "info") orelse return error.FieldNotFound;
-        if (!bencode.isObject(field_info.*)) return error.InvalidField;
+        const field_info = bencode.mapLookup(value.root.Map, "info") orelse return error.FieldNotFound;
+        if (!bencode.isMap(field_info.*)) return error.InvalidField;
 
-        const pieces_field = bencode.mapLookup(&field_info.Object, "pieces") orelse return error.FieldNotFound;
+        const pieces_field = bencode.mapLookup(field_info.Map, "pieces") orelse return error.FieldNotFound;
         if (!bencode.isString(pieces_field.*)) return error.InvalidField;
         const pieces = pieces_field.String;
 
@@ -73,7 +73,7 @@ pub const TorrentFile = struct {
         errdefer owned_pieces.deinit();
         try owned_pieces.appendSlice(pieces);
 
-        const piece_len_field = (bencode.mapLookup(&field_info.Object, "piece length") orelse return error.FieldNotFound);
+        const piece_len_field = (bencode.mapLookup(field_info.Map, "piece length") orelse return error.FieldNotFound);
         if (!bencode.isInteger(piece_len_field.*)) return error.InvalidField;
         const piece_len = piece_len_field.Integer;
 
@@ -83,7 +83,7 @@ pub const TorrentFile = struct {
         var file_sizes = std.ArrayList(usize).init(allocator);
         defer file_sizes.deinit();
 
-        if (bencode.mapLookup(&field_info.Object, "name")) |field| {
+        if (bencode.mapLookup(field_info.Map, "name")) |field| {
             if (!bencode.isString(field.*)) return error.InvalidField;
 
             const basename = std.fs.path.basename(field.String);
@@ -93,7 +93,7 @@ pub const TorrentFile = struct {
         }
 
         var total_len: usize = 0;
-        if (bencode.mapLookup(&field_info.Object, "length")) |field| {
+        if (bencode.mapLookup(field_info.Map, "length")) |field| {
             if (!bencode.isInteger(field.*)) return error.InvalidField;
 
             const len = field.Integer;
@@ -102,15 +102,15 @@ pub const TorrentFile = struct {
             try file_sizes.append(@intCast(usize, len));
         }
 
-        if (bencode.mapLookup(&field_info.Object, "files")) |field| {
+        if (bencode.mapLookup(field_info.Map, "files")) |field| {
             if (!bencode.isArray(field.*)) return error.InvalidField;
 
             if (field.Array.items.len > 0) {
                 for (field.Array.items) |file_field| {
-                    if (!bencode.isObject(file_field)) return error.InvalidField;
-                    var files = file_field.Object;
+                    if (!bencode.isMap(file_field)) return error.InvalidField;
+                    var files = file_field.Map;
 
-                    const file_path_field = (bencode.mapLookup(&files, "path") orelse return error.FieldNotFound);
+                    const file_path_field = (bencode.mapLookup(files, "path") orelse return error.FieldNotFound);
                     if (!bencode.isArray(file_path_field.*)) return error.InvalidField;
                     const file_path_field_real = file_path_field.Array.items[0];
 
@@ -122,7 +122,7 @@ pub const TorrentFile = struct {
 
                     try file_paths.append(try allocator.dupe(u8, basename));
 
-                    const total_len_field = bencode.mapLookup(&files, "length") orelse return error.FieldNotFound;
+                    const total_len_field = bencode.mapLookup(files, "length") orelse return error.FieldNotFound;
                     if (!bencode.isInteger(total_len_field.*)) return error.InvalidField;
 
                     const len = total_len_field.Integer;

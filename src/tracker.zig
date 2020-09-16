@@ -77,17 +77,17 @@ fn addPeersFromTracker(url: []const u8, peers: *std.ArrayList(Peer), query: Quer
     std.log.notice("Tracker {} replied successfuly", .{url});
 
     var dict_field = tracker_response.root;
-    if (!bencode.isObject(dict_field)) return error.InvalidField;
-    var dict = dict_field.Object;
+    if (!bencode.isMap(dict_field)) return error.InvalidField;
+    var dict = dict_field.Map;
 
-    if (bencode.mapLookup(&dict, "failure reason")) |failure_field| {
+    if (bencode.mapLookup(dict, "failure reason")) |failure_field| {
         if (!bencode.isString(failure_field.*)) return error.InvalidField;
 
         std.log.warn("Tracker {}: {}", .{ url, failure_field.String });
         return error.TrackerFailure;
     }
 
-    const peers_field = if (bencode.mapLookup(&dict, "peers")) |peers_field| peers_field.* else return error.EmptyPeers;
+    const peers_field = if (bencode.mapLookup(dict, "peers")) |peers_field| peers_field.* else return error.EmptyPeers;
 
     switch (peers_field) {
         .String => |peers_compact| {
@@ -121,12 +121,12 @@ fn addPeersFromTracker(url: []const u8, peers: *std.ArrayList(Peer), query: Quer
         .Array => |*peers_list| {
             for (peers_list.items) |*peer_field| {
                 // TODO: parse peer_id?
-                const ip = if (bencode.mapLookup(&peer_field.Object, "ip")) |ip_field| brk: {
+                const ip = if (bencode.mapLookup(peer_field.Map, "ip")) |ip_field| brk: {
                     if (!bencode.isString(ip_field.*)) return error.InvalidField;
                     break :brk ip_field.String;
                 } else continue;
 
-                const port = if (bencode.mapLookup(&peer_field.Object, "port")) |port_field| brk: {
+                const port = if (bencode.mapLookup(peer_field.Map, "port")) |port_field| brk: {
                     if (!bencode.isInteger(port_field.*)) return error.InvalidField;
                     break :brk port_field.Integer;
                 } else continue;
